@@ -196,23 +196,32 @@
         </div>
       </section>
 
-      <section class="panel-section" hidden>
-        <div class="section-title">Hotspots</div>
-        <div class="inline-actions">
-          <button class="btn" id="btn-add-hotspot">Add Hotspot</button>
-          <button class="btn ghost" id="btn-delete-hotspot">Delete</button>
+      <section class="panel-section">
+        <div class="section-head">
+          <div class="section-title">Info Hotspots</div>
         </div>
-        <div class="inline-actions">
-          <button class="btn ghost" id="btn-preview-hotspot">Preview Hotspot</button>
+        <div class="section-body">
+          <div class="field">
+            <label>Hotspots</label>
+            <select id="info-hotspot-select"></select>
+          </div>
+          <div class="inline-actions">
+            <button class="btn" id="btn-add-hotspot">New</button>
+            <button class="btn ghost" id="btn-delete-hotspot">Delete</button>
+            <button class="btn ghost" id="btn-edit-hotspot">Edit</button>
+            <button class="btn ghost" id="btn-save-hotspot">Save</button>
+          </div>
+          <div class="panel-hint">Informational hotspots are independent from Scene Links.</div>
         </div>
-        <div class="panel-hint">Generic hotspot tools.</div>
       </section>
 
-      <section class="panel-section" hidden>
-        <div class="section-title">Hotspot Content</div>
-        <div class="content-blocks" id="content-blocks"></div>
-        <div class="inline-actions">
-          <button class="btn" id="btn-add-block">Add Block</button>
+      <section class="panel-section">
+        <div class="section-head">
+          <div class="section-title">Info Content</div>
+        </div>
+        <div class="section-body">
+          <div class="content-blocks" id="content-blocks"></div>
+          <div class="panel-hint">Use one rich content editor per info hotspot. Mix text, image, and video inline.</div>
         </div>
       </section>
 
@@ -227,12 +236,38 @@
   <div class="map-window-backdrop" id="map-window-backdrop" aria-hidden="true"></div>
 
   <div class="hotspot-modal" id="hotspot-preview-modal" aria-hidden="true">
-    <div class="modal-content">
+    <div class="modal-content" id="preview-modal-content">
       <div class="modal-header">
         <div class="modal-title" id="preview-modal-title">Hotspot</div>
-        <button class="btn ghost" id="btn-close-preview">Close</button>
+        <button class="btn ghost modal-close-x" id="btn-close-preview" aria-label="Close popup">&times;</button>
       </div>
       <div class="modal-body" id="preview-modal-body"></div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="rich-editor-modal" aria-hidden="true">
+    <div class="modal-content modal-content-rich-editor" id="rich-editor-modal-content">
+      <div class="rich-editor-surface" id="rich-editor-surface" contenteditable="true"></div>
+      <input type="file" id="file-rich-editor-image" accept="image/*" hidden>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="rich-source-modal" aria-hidden="true">
+    <div class="modal-content modal-content-rich-source">
+      <div class="modal-header">
+        <div class="modal-title">Rich HTML Source</div>
+        <button class="btn ghost" id="btn-rich-source-close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>HTML Source</label>
+          <textarea id="rich-source-textarea" rows="18" spellcheck="false"></textarea>
+        </div>
+        <div class="panel-hint">Edit source HTML directly. Content is sanitized on preview/export.</div>
+      </div>
+      <div class="modal-header rich-editor-footer">
+        <button class="btn primary" id="btn-rich-source-save">Apply</button>
+      </div>
     </div>
   </div>
 

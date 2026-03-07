@@ -45,6 +45,7 @@ const btnFloorplanZoomIn = document.getElementById('btn-floorplan-zoom-in');
 const btnFloorplanZoomReset = document.getElementById('btn-floorplan-zoom-reset');
 const floorplanZoomValue = document.getElementById('floorplan-zoom-value');
 const modal = document.getElementById('hotspot-modal');
+const modalContent = modal?.querySelector('.modal-content');
 const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body');
 const btnGyro = document.getElementById('btn-gyro');
@@ -70,38 +71,666 @@ const FLOORPLAN_COLOR_MAP = {
   red: '#ef4444',
   cyan: '#22d3ee',
   lightgreen: '#86efac',
-  magenta: '#f472b6'
+  magenta: '#f472b6',
+  white: '#ffffff',
+  black: '#111111'
 };
+const TEXT_ALIGN_VALUES = new Set(['left', 'center', 'right', 'justify']);
+const DEFAULT_INFO_FRAME_WIDTH = 920;
+const DEFAULT_INFO_FRAME_HEIGHT = 460;
+const MIN_INFO_FRAME_WIDTH = 44;
+const MAX_INFO_FRAME_WIDTH = 2400;
+const MIN_INFO_FRAME_HEIGHT = 30;
+const MAX_INFO_FRAME_HEIGHT = 1800;
+
+function normalizeTextAlign(value) {
+  const candidate = String(value || 'left').trim().toLowerCase();
+  return TEXT_ALIGN_VALUES.has(candidate) ? candidate : 'left';
+}
+
+function clampInfoFrameDimension(value, min, max, fallback) {
+  const numeric = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
+}
+
+function normalizeInfoFrameSize(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    width: clampInfoFrameDimension(
+      source.width,
+      MIN_INFO_FRAME_WIDTH,
+      MAX_INFO_FRAME_WIDTH,
+      DEFAULT_INFO_FRAME_WIDTH
+    ),
+    height: clampInfoFrameDimension(
+      source.height,
+      MIN_INFO_FRAME_HEIGHT,
+      MAX_INFO_FRAME_HEIGHT,
+      DEFAULT_INFO_FRAME_HEIGHT
+    )
+  };
+}
+
+function applyInfoModalFrameSize(hotspot) {
+  if (!modalContent || !modalBody) return;
+  const frame = normalizeInfoFrameSize(hotspot?.infoFrameSize);
+  const maxWidth = Math.max(MIN_INFO_FRAME_WIDTH, window.innerWidth - 56);
+  const maxHeight = Math.max(MIN_INFO_FRAME_HEIGHT, window.innerHeight - 160);
+  const width = Math.min(frame.width, maxWidth);
+  const height = Math.min(frame.height, maxHeight);
+  const chromeWidth = Math.max(0, modalContent.offsetWidth - modalBody.clientWidth);
+  modalContent.style.width = `${Math.round(width + chromeWidth)}px`;
+  modalBody.style.height = `${height}px`;
+  modalBody.style.maxHeight = `${height}px`;
+}
+
+function normalizeRichLayoutColumns(value, fallback = 2) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed)) {
+    return Math.max(1, Math.min(6, parsed));
+  }
+  return Math.max(1, Math.min(6, Number.parseInt(fallback, 10) || 2));
+}
+
+function getDefaultRichLayoutWeights(columnCount) {
+  const safeCols = normalizeRichLayoutColumns(columnCount, 2);
+  if (safeCols === 2) {
+    return [1.35, 1];
+  }
+  return Array.from({ length: safeCols }, () => 1);
+}
+
+function parseRichLayoutWeightsCsv(rawValue, expectedCols = null) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return null;
+  const parts = raw.split(',').map((item) => item.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  if (Number.isFinite(expectedCols) && expectedCols > 0 && parts.length !== expectedCols) return null;
+  const weights = parts.map((item) => Number.parseFloat(item));
+  if (weights.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+  return weights;
+}
+
+function parseRichLayoutWeightsTemplate(rawTemplate, expectedCols = null) {
+  const raw = String(rawTemplate || '').trim();
+  if (!raw) return null;
+  const tokens = raw.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+  if (!tokens.length) return null;
+  if (Number.isFinite(expectedCols) && expectedCols > 0 && tokens.length !== expectedCols) return null;
+  const weights = [];
+  for (const token of tokens) {
+    let match = token.match(/^minmax\(0,\s*([0-9]*\.?[0-9]+)fr\)$/i);
+    if (match) {
+      weights.push(Number.parseFloat(match[1]));
+      continue;
+    }
+    match = token.match(/^([0-9]*\.?[0-9]+)fr$/i);
+    if (match) {
+      weights.push(Number.parseFloat(match[1]));
+      continue;
+    }
+    match = token.match(/^([0-9]*\.?[0-9]+)%$/i);
+    if (match) {
+      weights.push(Number.parseFloat(match[1]));
+      continue;
+    }
+    match = token.match(/^([0-9]*\.?[0-9]+)px$/i);
+    if (match) {
+      weights.push(Number.parseFloat(match[1]));
+      continue;
+    }
+    return null;
+  }
+  if (weights.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+  return weights;
+}
+
+function serializeRichLayoutWeights(weights) {
+  return (weights || [])
+    .map((value) => Math.max(1, Number.parseFloat(value) || 1))
+    .map((value) => value.toFixed(4))
+    .join(',');
+}
+
+function resetInfoModalFrameSize() {
+  if (!modalContent || !modalBody) return;
+  modalContent.style.removeProperty('width');
+  modalBody.style.removeProperty('height');
+  modalBody.style.removeProperty('max-height');
+}
+
+function sanitizeImageSizeValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/^\d{1,3}%$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 5 && amount <= 100) return `${amount}%`;
+  }
+  if (/^\d{1,4}px$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 24 && amount <= 4096) return `${amount}px`;
+  }
+  if (/^\d{1,4}$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 24 && amount <= 4096) return `${amount}px`;
+  }
+  return '';
+}
+
+function sanitizeImageMaxHeightValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/^\d{1,4}px$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 24 && amount <= 2400) return `${amount}px`;
+  }
+  if (/^\d{1,3}(\.\d+)?em$/.test(raw)) {
+    const amount = Number.parseFloat(raw);
+    if (amount >= 1 && amount <= 120) return `${amount}em`;
+  }
+  if (/^\d{1,3}(\.\d+)?rem$/.test(raw)) {
+    const amount = Number.parseFloat(raw);
+    if (amount >= 1 && amount <= 120) return `${amount}rem`;
+  }
+  if (/^\d{1,4}$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 24 && amount <= 2400) return `${amount}px`;
+  }
+  return '';
+}
+
+function sanitizeRichFontSizeValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/^\d{1,3}px$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 8 && amount <= 96) return `${amount}px`;
+  }
+  if (/^\d{1,3}$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 8 && amount <= 96) return `${amount}px`;
+  }
+  return '';
+}
+
+function sanitizeRichLineHeightValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/^\d(?:\.\d+)?$/.test(raw)) {
+    const amount = Number.parseFloat(raw);
+    if (amount >= 0.8 && amount <= 3) return String(amount);
+  }
+  if (/^\d{2,3}%$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 80 && amount <= 300) return `${amount}%`;
+  }
+  if (/^\d{1,3}(\.\d+)?(px|em|rem)$/.test(raw)) {
+    return raw;
+  }
+  return '';
+}
+
+function sanitizeRichParagraphSpacingValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/^\d{1,2}px$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 0 && amount <= 48) return `${amount}px`;
+  }
+  if (/^\d{1,2}$/.test(raw)) {
+    const amount = Number.parseInt(raw, 10);
+    if (amount >= 0 && amount <= 48) return `${amount}px`;
+  }
+  return '';
+}
+
+function normalizeImageWrap(value) {
+  const candidate = String(value || '').trim().toLowerCase();
+  if (candidate === 'left' || candidate === 'right' || candidate === 'none') return candidate;
+  return 'none';
+}
+
+function parseMediaReference(value) {
+  const raw = String(value || '').trim();
+  if (!raw.toLowerCase().startsWith('media:')) return '';
+  const encodedId = raw.slice(6);
+  if (!encodedId) return '';
+  try {
+    return decodeURIComponent(encodedId).trim();
+  } catch (error) {
+    return encodedId.trim();
+  }
+}
+
+function resolveProjectMediaPath(projectRef, mediaId, { preferDataUrl = false } = {}) {
+  if (!projectRef || !mediaId) return '';
+  const media = (projectRef.assets?.media || []).find((asset) => asset.id === mediaId);
+  if (!media) return '';
+  if (preferDataUrl && media.dataUrl) return media.dataUrl;
+  return media.path || media.dataUrl || '';
+}
+
+function resolveRichMediaReferencesInContainer(container, projectRef = projectData, { preferDataUrl = false } = {}) {
+  if (!container || !projectRef) return;
+  container.querySelectorAll('[src]').forEach((node) => {
+    const mediaId = parseMediaReference(node.getAttribute('src'));
+    if (!mediaId) return;
+    const resolved = resolveProjectMediaPath(projectRef, mediaId, { preferDataUrl });
+    if (resolved) {
+      node.setAttribute('src', resolved);
+      return;
+    }
+    node.removeAttribute('src');
+  });
+}
+
+function isSafeRichUrl(value, { allowDataImage = false } = {}) {
+  const url = String(value || '').trim();
+  if (!url) return false;
+  if (parseMediaReference(url)) return true;
+  if (allowDataImage && url.startsWith('data:image/')) return true;
+  if (url.startsWith('http://') || url.startsWith('https://')) return true;
+  if (url.startsWith('./') || url.startsWith('../') || url.startsWith('/')) return true;
+  return false;
+}
+
+function parseYouTubeTimeToSeconds(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 0;
+  if (/^\d+$/.test(raw)) return Math.max(0, Number.parseInt(raw, 10) || 0);
+  let total = 0;
+  const hourMatch = raw.match(/(\d+)h/);
+  const minMatch = raw.match(/(\d+)m/);
+  const secMatch = raw.match(/(\d+)s/);
+  if (hourMatch) total += (Number.parseInt(hourMatch[1], 10) || 0) * 3600;
+  if (minMatch) total += (Number.parseInt(minMatch[1], 10) || 0) * 60;
+  if (secMatch) total += Number.parseInt(secMatch[1], 10) || 0;
+  return Math.max(0, total);
+}
+
+function normalizeVideoEmbedUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let url;
+  try {
+    url = new URL(raw);
+  } catch (error) {
+    return raw;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname;
+  const query = url.searchParams;
+
+  const isYouTubeHost = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host);
+  if (isYouTubeHost) {
+    let videoId = '';
+    if (/youtu\.be$/.test(host)) {
+      videoId = path.replace(/^\/+/, '').split('/')[0] || '';
+    } else if (path.startsWith('/watch')) {
+      videoId = query.get('v') || '';
+    } else if (path.startsWith('/embed/')) {
+      videoId = path.split('/')[2] || '';
+    } else if (path.startsWith('/shorts/')) {
+      videoId = path.split('/')[2] || '';
+    } else if (path.startsWith('/live/')) {
+      videoId = path.split('/')[2] || '';
+    }
+    if (!videoId) return raw;
+    const t = query.get('t') || query.get('start') || '';
+    const startSeconds = parseYouTubeTimeToSeconds(t);
+    const out = new URL(`https://www.youtube.com/embed/${videoId}`);
+    if (startSeconds > 0) out.searchParams.set('start', String(startSeconds));
+    return out.toString();
+  }
+
+  const isVimeoHost = /(^|\.)vimeo\.com$/.test(host) || /(^|\.)player\.vimeo\.com$/.test(host);
+  if (isVimeoHost) {
+    const segments = path.split('/').filter(Boolean);
+    let videoId = '';
+    if (host.includes('player.vimeo.com')) {
+      const videoIndex = segments.indexOf('video');
+      videoId = videoIndex >= 0 ? (segments[videoIndex + 1] || '') : '';
+    } else {
+      videoId = segments[0] || '';
+    }
+    if (!videoId || !/^\d+$/.test(videoId)) return raw;
+    return `https://player.vimeo.com/video/${videoId}`;
+  }
+
+  return raw;
+}
+
+function sanitizeRichHtml(rawHtml) {
+  const template = document.createElement('template');
+  template.innerHTML = String(rawHtml || '');
+  const allowedTags = new Set([
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u',
+    'ul', 'ol', 'li', 'img', 'video', 'iframe',
+    'a', 'div', 'span', 'h1', 'h2', 'h3', 'h4',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th'
+  ]);
+
+  const cleanNode = (node) => {
+    if (!node) return;
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      if (!allowedTags.has(tag)) {
+        const parent = node.parentNode;
+        if (parent) {
+          while (node.firstChild) {
+            parent.insertBefore(node.firstChild, node);
+          }
+          parent.removeChild(node);
+        }
+        return;
+      }
+
+      const originalAttrs = {};
+      Array.from(node.attributes).forEach((attr) => {
+        originalAttrs[attr.name.toLowerCase()] = attr.value;
+      });
+      Array.from(node.attributes).forEach((attr) => {
+        node.removeAttribute(attr.name);
+      });
+
+      if (tag === 'p' || tag === 'div' || tag === 'span' || /^h[1-4]$/.test(tag) || tag === 'td' || tag === 'th') {
+        const styleValue = String(originalAttrs.style || '');
+        const match = styleValue.match(/text-align\s*:\s*(left|center|right|justify)/i);
+        const align = normalizeTextAlign(match ? match[1] : 'left');
+        const sizeMatch = styleValue.match(/(?:^|;)\s*font-size\s*:\s*([^;]+)/i);
+        const fontSize = sanitizeRichFontSizeValue(sizeMatch ? sizeMatch[1] : '');
+        const lineMatch = styleValue.match(/(?:^|;)\s*line-height\s*:\s*([^;]+)/i);
+        const lineHeight = sanitizeRichLineHeightValue(lineMatch ? lineMatch[1] : '');
+        const marginTopMatch = styleValue.match(/(?:^|;)\s*margin-top\s*:\s*([^;]+)/i);
+        const marginBottomMatch = styleValue.match(/(?:^|;)\s*margin-bottom\s*:\s*([^;]+)/i);
+        const marginTop = sanitizeRichParagraphSpacingValue(marginTopMatch ? marginTopMatch[1] : '');
+        const marginBottom = sanitizeRichParagraphSpacingValue(marginBottomMatch ? marginBottomMatch[1] : '');
+        const paddingTopMatch = styleValue.match(/(?:^|;)\s*padding-top\s*:\s*([^;]+)/i);
+        const paddingBottomMatch = styleValue.match(/(?:^|;)\s*padding-bottom\s*:\s*([^;]+)/i);
+        const paddingTop = sanitizeRichParagraphSpacingValue(paddingTopMatch ? paddingTopMatch[1] : '');
+        const paddingBottom = sanitizeRichParagraphSpacingValue(paddingBottomMatch ? paddingBottomMatch[1] : '');
+        if (align !== 'left') {
+          node.style.textAlign = align;
+        }
+        if (fontSize) {
+          node.style.fontSize = fontSize;
+        }
+        if (lineHeight) {
+          node.style.lineHeight = lineHeight;
+        }
+        if (marginTop) {
+          node.style.marginTop = marginTop;
+        }
+        if (marginBottom) {
+          node.style.marginBottom = marginBottom;
+        }
+        if (tag === 'div') {
+          if (paddingTop) {
+            node.style.paddingTop = paddingTop;
+          }
+          if (paddingBottom) {
+            node.style.paddingBottom = paddingBottom;
+          }
+        }
+      }
+
+      if (tag === 'div') {
+        const layout = String(originalAttrs['data-layout'] || '').trim().toLowerCase();
+        const col = Number.parseInt(String(originalAttrs['data-col'] || '').trim(), 10);
+        const styleValue = String(originalAttrs.style || '');
+        const savedColWidths = String(originalAttrs['data-col-widths'] || '').trim();
+        const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+        const heightMatch = styleValue.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i);
+        const minHeightMatch = styleValue.match(/(?:^|;)\s*min-height\s*:\s*([^;]+)/i);
+        const gridTemplateMatch = styleValue.match(/(?:^|;)\s*grid-template-columns\s*:\s*([^;]+)/i);
+        const requestedWidth = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : '');
+        const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : '');
+        const requestedMinHeight = sanitizeImageMaxHeightValue(minHeightMatch ? minHeightMatch[1] : '');
+        const layoutMatch = layout.match(/^columns-(\d+)$/i);
+        if (layoutMatch) {
+          const safeCols = normalizeRichLayoutColumns(layoutMatch[1], 2);
+          node.setAttribute('data-layout', `columns-${safeCols}`);
+          const colWeights =
+            parseRichLayoutWeightsCsv(savedColWidths, safeCols)
+            || parseRichLayoutWeightsTemplate(gridTemplateMatch ? gridTemplateMatch[1] : '', safeCols)
+            || getDefaultRichLayoutWeights(safeCols);
+          if (colWeights) {
+            node.setAttribute('data-col-widths', serializeRichLayoutWeights(colWeights));
+            node.style.gridTemplateColumns = colWeights
+              .map((value) => `minmax(0,${Math.max(1, value).toFixed(4)}fr)`)
+              .join(' ');
+          }
+          if (requestedWidth) {
+            node.style.width = requestedWidth;
+          }
+          if (requestedHeight) {
+            node.style.height = requestedHeight;
+          }
+          if (requestedMinHeight) {
+            node.style.minHeight = requestedMinHeight;
+          }
+        }
+        if (Number.isFinite(col) && col >= 1 && col <= 12) {
+          node.setAttribute('data-col', String(col));
+        }
+      }
+
+      if (tag === 'table') {
+        const styleValue = String(originalAttrs.style || '');
+        const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+        const requestedWidth = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : '');
+        if (requestedWidth) {
+          node.style.width = requestedWidth;
+        }
+        node.style.borderCollapse = 'collapse';
+      }
+
+      if (tag === 'tr') {
+        const styleValue = String(originalAttrs.style || '');
+        const heightMatch = styleValue.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i);
+        const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : '');
+        if (requestedHeight) {
+          node.style.height = requestedHeight;
+        }
+      }
+
+      if (tag === 'td' || tag === 'th') {
+        const styleValue = String(originalAttrs.style || '');
+        const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+        const heightMatch = styleValue.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i);
+        const requestedWidth = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : '');
+        const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : '');
+        if (requestedWidth) {
+          node.style.width = requestedWidth;
+        }
+        if (requestedHeight) {
+          node.style.height = requestedHeight;
+        }
+      }
+
+      if (tag === 'img') {
+        const src = String(originalAttrs.src || '').trim();
+        if (isSafeRichUrl(src, { allowDataImage: true })) {
+          node.setAttribute('src', src);
+          node.setAttribute('alt', String(originalAttrs.alt || '').trim());
+          const styleValue = String(originalAttrs.style || '');
+          const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+          const maxHeightMatch = styleValue.match(/(?:^|;)\s*max-height\s*:\s*([^;]+)/i);
+          const floatMatch = styleValue.match(/(?:^|;)\s*float\s*:\s*(left|right|none)/i);
+          const wrapFromData = normalizeImageWrap(originalAttrs['data-wrap'] || '');
+          const requestedWrap = normalizeImageWrap(wrapFromData !== 'none' ? wrapFromData : (floatMatch ? floatMatch[1] : 'none'));
+          const requestedSize = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : (originalAttrs.width || ''));
+          const requestedMaxHeight = sanitizeImageMaxHeightValue(maxHeightMatch ? maxHeightMatch[1] : '');
+          if (requestedSize) {
+            node.style.width = requestedSize;
+          }
+          if (requestedSize || requestedMaxHeight) {
+            node.style.height = 'auto';
+          }
+          if (requestedMaxHeight) {
+            node.style.maxHeight = requestedMaxHeight;
+          }
+          node.setAttribute('data-wrap', requestedWrap);
+          if (requestedWrap === 'left') {
+            node.style.float = 'left';
+            node.style.margin = '0 0.85em 0.6em 0';
+          } else if (requestedWrap === 'right') {
+            node.style.float = 'right';
+            node.style.margin = '0 0 0.6em 0.85em';
+          } else {
+            node.style.float = 'none';
+            node.style.display = 'block';
+            node.style.margin = '0.5em 0';
+          }
+          node.setAttribute('loading', 'lazy');
+        } else {
+          const parent = node.parentNode;
+          if (parent) parent.removeChild(node);
+          return;
+        }
+      }
+
+      if (tag === 'video') {
+        const src = String(originalAttrs.src || '').trim();
+        if (isSafeRichUrl(src)) {
+          node.setAttribute('src', src);
+          node.setAttribute('controls', '');
+          const styleValue = String(originalAttrs.style || '');
+          const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+          const heightMatch = styleValue.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i);
+          const requestedWidth = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : (originalAttrs.width || ''));
+          const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : (originalAttrs.height || ''));
+          if (requestedWidth) {
+            node.style.width = requestedWidth;
+          }
+          if (requestedHeight) {
+            node.style.height = requestedHeight;
+          }
+        } else {
+          const parent = node.parentNode;
+          if (parent) parent.removeChild(node);
+          return;
+        }
+      }
+
+      if (tag === 'iframe') {
+        const src = String(originalAttrs.src || '').trim();
+        const normalizedSrc = normalizeVideoEmbedUrl(src);
+        if (isSafeRichUrl(normalizedSrc)) {
+          node.setAttribute('src', normalizedSrc);
+          node.setAttribute('loading', 'lazy');
+          node.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
+          node.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+          node.setAttribute('allowfullscreen', '');
+          node.setAttribute('frameborder', '0');
+          const styleValue = String(originalAttrs.style || '');
+          const widthMatch = styleValue.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i);
+          const heightMatch = styleValue.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i);
+          const requestedWidth = sanitizeImageSizeValue(widthMatch ? widthMatch[1] : (originalAttrs.width || ''));
+          const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : (originalAttrs.height || ''));
+          if (requestedWidth) {
+            node.style.width = requestedWidth;
+          }
+          if (requestedHeight) {
+            node.style.height = requestedHeight;
+          }
+          node.style.border = '0';
+        } else {
+          const parent = node.parentNode;
+          if (parent) parent.removeChild(node);
+          return;
+        }
+      }
+
+      if (tag === 'a') {
+        const href = String(originalAttrs.href || '').trim();
+        if (isSafeRichUrl(href)) {
+          node.setAttribute('href', href);
+          node.setAttribute('target', '_blank');
+          node.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
+    }
+    Array.from(node.childNodes || []).forEach(cleanNode);
+  };
+
+  Array.from(template.content.childNodes).forEach(cleanNode);
+  return template.innerHTML;
+}
+
+function trimTrailingEmptyParagraphs(container) {
+  if (!(container instanceof Element)) return;
+  while (container.lastElementChild) {
+    const last = container.lastElementChild;
+    if (!(last instanceof HTMLElement) || last.tagName.toLowerCase() !== 'p') break;
+    const normalizedHtml = String(last.innerHTML || '')
+      .replace(/&nbsp;/gi, '')
+      .replace(/<br\s*\/?>/gi, '')
+      .trim();
+    const normalizedText = String(last.textContent || '')
+      .replace(/\u00a0/g, '')
+      .trim();
+    if (normalizedHtml !== '' || normalizedText !== '') break;
+    last.remove();
+  }
+}
 
 function openModal(hotspot) {
   modalTitle.textContent = hotspot.title || 'Hotspot';
   modalBody.innerHTML = '';
 
-  (hotspot.contentBlocks || []).forEach((block) => {
+  const blocks = Array.isArray(hotspot.contentBlocks) ? hotspot.contentBlocks : [];
+  const isSceneLinkHotspot = blocks.some((block) => block.type === 'scene');
+  if (!isSceneLinkHotspot && typeof hotspot.richContentHtml === 'string') {
+    applyInfoModalFrameSize(hotspot);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block';
+    wrapper.innerHTML = sanitizeRichHtml(hotspot.richContentHtml);
+    trimTrailingEmptyParagraphs(wrapper);
+    resolveRichMediaReferencesInContainer(wrapper, projectData, { preferDataUrl: false });
+    modalBody.appendChild(wrapper);
+    modal.classList.add('visible');
+    modal.setAttribute('aria-hidden', 'false');
+    return;
+  }
+
+  resetInfoModalFrameSize();
+
+  blocks.forEach((block) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'block';
 
-    const heading = document.createElement('h4');
-    heading.textContent = block.type;
-    wrapper.appendChild(heading);
+    const isInfoInlineBlock = block.type === 'text' || block.type === 'image' || block.type === 'video';
+    if (!isInfoInlineBlock) {
+      const heading = document.createElement('h4');
+      heading.textContent = block.type;
+      wrapper.appendChild(heading);
+    }
 
     if (block.type === 'text') {
       const p = document.createElement('p');
       p.textContent = block.value || '';
+      p.style.whiteSpace = 'pre-wrap';
+      p.style.textAlign = normalizeTextAlign(block.align);
       wrapper.appendChild(p);
     }
 
-    if (block.type === 'image' && block.assetPath) {
-      const img = document.createElement('img');
-      img.src = block.assetPath;
-      img.alt = hotspot.title || 'Hotspot image';
-      wrapper.appendChild(img);
+    if (block.type === 'image') {
+      const imageSrc = String(block.url || '').trim() || block.assetPath || '';
+      if (imageSrc) {
+        const img = document.createElement('img');
+        img.src = imageSrc;
+        img.alt = hotspot.title || 'Hotspot image';
+        wrapper.appendChild(img);
+      }
     }
 
     if (block.type === 'video') {
       if (block.url) {
         const iframe = document.createElement('iframe');
-        iframe.src = block.url;
+        iframe.src = normalizeVideoEmbedUrl(block.url);
         iframe.width = '100%';
         iframe.height = '360';
         iframe.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
@@ -159,8 +788,22 @@ function openModal(hotspot) {
 }
 
 function closeModal() {
+  modalBody?.querySelectorAll('video,audio').forEach((mediaEl) => {
+    try {
+      mediaEl.pause();
+    } catch (_) {}
+  });
+  modalBody?.querySelectorAll('iframe').forEach((iframeEl) => {
+    try {
+      iframeEl.setAttribute('src', 'about:blank');
+    } catch (_) {}
+  });
+  if (modalBody) {
+    modalBody.innerHTML = '';
+  }
   modal.classList.remove('visible');
   modal.setAttribute('aria-hidden', 'true');
+  resetInfoModalFrameSize();
 }
 
 function normalizeProject(rawProject) {
@@ -200,8 +843,13 @@ function normalizeProject(rawProject) {
       scene.hotspots = [];
     }
     scene.hotspots.forEach((hotspot) => {
+      hotspot.infoFrameSize = normalizeInfoFrameSize(hotspot.infoFrameSize);
       const blocks = Array.isArray(hotspot?.contentBlocks) ? hotspot.contentBlocks : [];
+      const hasSceneLink = blocks.some((block) => block?.type === 'scene');
       blocks.forEach((block) => {
+        if (block?.type === 'text') {
+          block.align = normalizeTextAlign(block.align);
+        }
         if (block?.type === 'scene') {
           block.comment = typeof block.comment === 'string' ? block.comment : '';
           if (Object.prototype.hasOwnProperty.call(block, 'alias')) {
@@ -209,6 +857,50 @@ function normalizeProject(rawProject) {
           }
         }
       });
+      if (!hasSceneLink) {
+        if (typeof hotspot.richContentHtml !== 'string') {
+          const mediaPathById = new Map(
+            (project.assets?.media || []).map((asset) => [asset.id, asset.dataUrl || asset.path || ''])
+          );
+          const parts = [];
+          blocks.forEach((block) => {
+            if (block?.type === 'text') {
+              const align = normalizeTextAlign(block.align);
+              const text = String(block.value || '');
+              const safeText = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/\n/g, '<br>');
+              const style = align === 'left' ? '' : ` style="text-align:${align}"`;
+              parts.push(`<p${style}>${safeText}</p>`);
+              return;
+            }
+            if (block?.type === 'image') {
+              const src = String(block.url || '').trim() ||
+                (block.assetId ? `media:${encodeURIComponent(String(block.assetId))}` : '') ||
+                String(block.assetPath || mediaPathById.get(block.assetId) || '').trim();
+              if (src) parts.push(`<p><img src="${src}" alt=""></p>`);
+              return;
+            }
+            if (block?.type === 'video') {
+              const src = String(block.url || '').trim() ||
+                (block.assetId ? `media:${encodeURIComponent(String(block.assetId))}` : '') ||
+                String(block.assetPath || mediaPathById.get(block.assetId) || '').trim();
+              if (!src) return;
+              if (/youtube\.com|youtu\.be|vimeo\.com/i.test(src)) {
+                parts.push(`<p><iframe src="${src}"></iframe></p>`);
+              } else {
+                parts.push(`<p><video src="${src}" controls></video></p>`);
+              }
+            }
+          });
+          hotspot.richContentHtml = parts.join('\n');
+        }
+        hotspot.contentBlocks = blocks.filter((block) => block?.type === 'scene');
+      }
     });
   });
 
@@ -854,8 +1546,3 @@ groupSelect?.addEventListener('change', () => {
 });
 
 document.getElementById('btn-close-modal').addEventListener('click', closeModal);
-modal.addEventListener('click', (event) => {
-  if (event.target === modal) {
-    closeModal();
-  }
-});

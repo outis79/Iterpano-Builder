@@ -72,6 +72,14 @@
                 "title": { "type": "string" },
                 "linkCode": { "type": "string" },
                 "linkColorKey": { "type": "string" },
+                "infoFrameSize": {
+                  "type": "object",
+                  "properties": {
+                    "width": { "type": "number" },
+                    "height": { "type": "number" }
+                  }
+                },
+                "richContentHtml": { "type": "string" },
                 "contentBlocks": {
                   "type": "array",
                   "items": {
@@ -80,6 +88,7 @@
                     "properties": {
                       "type": { "type": "string", "enum": ["text", "image", "video", "audio", "link", "scene"] },
                       "value": { "type": "string" },
+                      "align": { "type": "string", "enum": ["left", "center", "right", "justify"] },
                       "assetId": { "type": "string" },
                       "url": { "type": "string" },
                       "label": { "type": "string" },
