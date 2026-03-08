@@ -295,6 +295,27 @@ textarea:disabled {
   flex-wrap: wrap;
 }
 
+.info-hotspot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(86px, 0.75fr);
+  gap: 8px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.info-hotspot-row .field {
+  margin-bottom: 0;
+}
+
+.info-hotspot-select-field select {
+  width: 100%;
+}
+
+.info-hotspot-color-field select {
+  width: 100%;
+  min-width: 0;
+}
+
 .rich-toolbar-actions {
   display: flex;
   flex-direction: column;
@@ -464,8 +485,18 @@ textarea:disabled {
   pointer-events: auto;
 }
 
+.hotspot-marker.info-hotspot-marker {
+  background: var(--info-hotspot-color, rgba(240, 200, 75, 0.85));
+  border-color: var(--info-hotspot-border, rgba(0, 0, 0, 0.6));
+  box-shadow: 0 0 10px rgba(240, 200, 75, 0.4);
+}
+
 .hotspot-marker.active {
-  box-shadow: 0 0 0 4px rgba(240, 200, 75, 0.25), 0 0 14px rgba(240, 200, 75, 0.7);
+  box-shadow: 0 0 0 4px var(--marker-active-ring, rgba(240, 200, 75, 0.25)), 0 0 14px var(--marker-active-glow, rgba(240, 200, 75, 0.7));
+}
+
+.hotspot-marker.preview-open {
+  opacity: 0.3;
 }
 
 .hotspot-marker.info-hotspot-marker::after {
@@ -506,6 +537,10 @@ textarea:disabled {
 
 .hotspot-marker.scene-link-marker.active {
   box-shadow: 0 0 0 3px var(--scene-link-ring, rgba(240, 200, 75, 0.25)), 0 0 12px var(--scene-link-ring, rgba(240, 200, 75, 0.55));
+}
+
+.hotspot-marker.scene-link-marker.preview-open {
+  opacity: 0.3;
 }
 
 .hotspot-marker.scene-link-marker.active::after {
@@ -844,10 +879,6 @@ textarea:disabled {
   vertical-align: top;
 }
 
-.rich-editor-surface .rich-table-cell-selected {
-  box-shadow: inset 0 0 0 2px rgba(240, 200, 75, 0.8);
-}
-
 .rich-editor-surface [data-layout^="columns-"] {
   display: grid;
   gap: 12px;
@@ -923,30 +954,6 @@ textarea:disabled {
 .rich-editor-surface p {
   margin-top: 0;
   margin-bottom: 4px;
-}
-
-.rich-table-resize-handle {
-  position: fixed;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  background: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  transform: translate(-50%, -50%);
-  z-index: 80;
-}
-
-.rich-table-col-handle {
-  cursor: col-resize;
-}
-
-.rich-table-row-handle {
-  cursor: row-resize;
-}
-
-.rich-table-resize-handle.hidden {
-  display: none;
 }
 
 .rich-editor-footer {
@@ -1307,6 +1314,14 @@ textarea:disabled {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+}
+
+.floorplan-color-select:disabled {
+  background-color: #090d12;
+  border-color: #151d27;
+  color: #617084 !important;
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .floorplan-color-select::-ms-expand {

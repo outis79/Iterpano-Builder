@@ -1,6 +1,6 @@
 {
   "project": {
-    "name": "New Tour",
+    "name": "Untitled Tour",
     "version": "1.0",
     "createdAt": "2026-02-15T00:00:00.000Z",
     "updatedAt": "2026-02-15T00:00:00.000Z"
@@ -12,13 +12,7 @@
     "gyroEnabled": false,
     "vrEnabled": true
   },
-  "groups": [
-    {
-      "id": "group-main",
-      "name": "Main Group",
-      "mainSceneId": null
-    }
-  ],
+  "groups": [],
   "scenes": [],
   "assets": {
     "media": []

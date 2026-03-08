@@ -201,17 +201,22 @@
           <div class="section-title">Info Hotspots</div>
         </div>
         <div class="section-body">
-          <div class="field">
-            <label>Hotspots</label>
-            <select id="info-hotspot-select"></select>
-          </div>
           <div class="inline-actions">
             <button class="btn" id="btn-add-hotspot">New</button>
             <button class="btn ghost" id="btn-delete-hotspot">Delete</button>
             <button class="btn ghost" id="btn-edit-hotspot">Edit</button>
             <button class="btn ghost" id="btn-save-hotspot">Save</button>
           </div>
-          <div class="panel-hint">Informational hotspots are independent from Scene Links.</div>
+          <div class="info-hotspot-row">
+            <div class="field info-hotspot-select-field">
+              <label>Hotspots</label>
+              <select id="info-hotspot-select"></select>
+            </div>
+            <div class="field info-hotspot-color-field">
+              <label>Color</label>
+              <select id="info-hotspot-color"></select>
+            </div>
+          </div>
         </div>
       </section>
 

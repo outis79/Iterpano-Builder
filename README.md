@@ -22,8 +22,9 @@ The project is operational and currently includes:
 - map workflow modes: `Place`, `Edit`, `Select All`, point `Delete`
 - per-scene map point colors (including bulk color apply with `Select All`)
 - detailed group deletion warning with cascade impact summary
-- standard hotspots and scene-link hotspots
-- hotspot content blocks (`text`, `image`, `video`, `audio`, `link`, `scene`)
+- scene-link hotspots
+- informational hotspots with rich-content editor
+- hotspot rich content supports text, images, local/embedded video, links, and column layouts
 - local autosave with IndexedDB
 - project JSON export
 - static package export (ZIP or folder write)
@@ -56,7 +57,7 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `viewer/app.js`: viewer runtime logic
 - `viewer/styles.css`: viewer styles
 - `viewer/vendor/`: runtime libraries (`marzipano`, `screenfull`, `bowser`, reset CSS)
-- `shared/sample-tour.json`: default project loaded by editor and viewer
+- `shared/sample-tour.json`: blank default project template loaded by editor and viewer
 - `shared/tour.schema.json`: JSON schema for the project format
 - `shared/themes.json`: available theme variables (currently not applied by runtime code)
 - `_tmp_marzipano.js`: local Marzipano copy (not directly referenced by the pages)
@@ -176,6 +177,10 @@ If you publish this repository as a public editor, keep it content-neutral:
 Recommended setup:
 - Repo A: builder (`editor`, `viewer` runtime code, `shared` template)
 - Repo B: exported tour package for final public delivery
+
+Current repository state:
+- `shared/sample-tour.json` is intentionally blank/content-neutral
+- `editor/app.js` fallback project is also blank/content-neutral
 
 ## Local Persistence
 The editor automatically stores a draft in IndexedDB:

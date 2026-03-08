@@ -1,7 +1,7 @@
 const sampleTourUrl = '../shared/sample-tour.json';
 const fallbackProject = {
   project: {
-    name: 'Sample Tour',
+    name: 'Untitled Tour',
     version: '1.0',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -13,48 +13,14 @@ const fallbackProject = {
     gyroEnabled: false,
     vrEnabled: true
   },
-  scenes: [
-    {
-      id: 'scene-entrance',
-      groupId: 'group-main',
-      name: 'Entrance',
-      levels: [
-        { tileSize: 256, size: 256, fallbackOnly: true },
-        { tileSize: 512, size: 512 },
-        { tileSize: 512, size: 1024 },
-        { tileSize: 512, size: 2048 }
-      ],
-      faceSize: 2048,
-      initialViewParameters: { yaw: 0, pitch: 0, fov: 1.4 },
-      hotspots: [
-        {
-          id: 'hs-altar',
-          yaw: 1.2,
-          pitch: -0.1,
-          title: 'Main Altar',
-          contentBlocks: [
-            { type: 'text', value: 'Short description.' },
-            { type: 'image', assetId: 'img-altar' },
-            { type: 'video', url: 'https://www.youtube.com/embed/dQw4w9WgXcQ' },
-            { type: 'audio', assetId: 'aud-narration' },
-            { type: 'link', label: 'Read more', url: 'https://example.com' }
-          ]
-        }
-      ]
-    }
-  ],
-  groups: [
-    { id: 'group-main', name: 'Main Group' }
-  ],
+  scenes: [],
+  groups: [],
   assets: {
-    media: [
-      { id: 'img-altar', type: 'image', path: 'media/altar.jpg', name: 'Altar Image' },
-      { id: 'aud-narration', type: 'audio', path: 'media/narration.mp3', name: 'Narration' }
-    ]
+    media: []
   },
   minimap: {
     enabled: false,
-    image: 'minimap/floorplan.png',
+    image: '',
     nodes: [],
     floorplans: []
   }
@@ -89,7 +55,9 @@ const linkCommentInput = document.getElementById('link-comment');
 const linkNoteLabel = document.getElementById('link-note-label');
 const linkNewColorSelect = document.getElementById('link-new-color');
 const infoHotspotSelect = document.getElementById('info-hotspot-select');
+const infoHotspotColorSelect = document.getElementById('info-hotspot-color');
 const contentBlocks = document.getElementById('content-blocks');
+const infoContentSectionBody = contentBlocks?.closest('.section-body') || null;
 const sceneTitle = document.getElementById('scene-title');
 const projectNameInput = document.getElementById('project-name');
 const projectFovInput = null;
@@ -226,10 +194,6 @@ let selectedRichLayoutElement = null;
 let richImageResizeHandleEl = null;
 let richImageResizeState = null;
 let richEditorSavedRange = null;
-let selectedRichTableCell = null;
-let richTableColResizeHandleEl = null;
-let richTableRowResizeHandleEl = null;
-let richTableResizeState = null;
 let richEditorDragState = null;
 let richLayoutResizeState = null;
 let richLayoutBlockResizeHandleHeightEl = null;
@@ -256,6 +220,9 @@ const DEFAULT_INFO_FRAME_WIDTH = 920;
 const DEFAULT_INFO_FRAME_HEIGHT = 460;
 const DEFAULT_INFO_FRAME_LEFT = 320;
 const DEFAULT_INFO_FRAME_TOP = 112;
+const DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X = 0;
+const DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y = 10;
+const DEFAULT_INFO_HOTSPOT_COLOR_KEY = 'yellow';
 const DEFAULT_INFO_BG_COLOR_KEY = 'black';
 const DEFAULT_INFO_BG_TRANSPARENCY = 60;
 const MIN_INFO_FRAME_WIDTH = 44;
@@ -263,6 +230,8 @@ const MAX_INFO_FRAME_WIDTH = 2400;
 const MIN_INFO_FRAME_HEIGHT = 30;
 const MAX_INFO_FRAME_HEIGHT = 1800;
 const RICH_LAYOUT_COLUMN_MIN_WIDTH = 80;
+const DEFAULT_RICH_LAYOUT_COLUMN_CHAR_WIDTH = 20;
+const DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX = 2;
 const DEFAULT_INFO_FRAME_VIEWPORT_WIDTH = 1366;
 const DEFAULT_INFO_FRAME_VIEWPORT_HEIGHT = 768;
 
@@ -381,8 +350,18 @@ function getScaledInfoFramePositionForViewport(hotspot) {
   };
 }
 
-function getAnchoredInfoFramePosition(hotspot) {
+function getDefaultInfoFramePositionFromHotspot(hotspot) {
   const fallback = getScaledInfoFramePositionForViewport(hotspot);
+  const hotspotPoint = getHotspotViewportPoint(hotspot);
+  if (!hotspotPoint) return fallback;
+  return normalizeInfoFramePosition({
+    left: Math.round(hotspotPoint.x + DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X),
+    top: Math.round(hotspotPoint.y + DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y)
+  });
+}
+
+function getAnchoredInfoFramePosition(hotspot) {
+  const fallback = getDefaultInfoFramePositionFromHotspot(hotspot);
   const anchorOffset = getInfoHotspotFrameAnchorOffset(hotspot);
   if (!anchorOffset) return fallback;
   const hotspotPoint = getHotspotViewportPoint(hotspot);
@@ -630,13 +609,39 @@ function persistPreviewModalFramePosition() {
   hotspot.infoFrameAnchorOffset = null;
 }
 
+function getPreviewModalAnchorOffset(hotspot) {
+  const sessionOffset = normalizeInfoFrameAnchorOffset(previewHotspotContext?.anchorOffset);
+  if (sessionOffset) return sessionOffset;
+  const savedOffset = getInfoHotspotFrameAnchorOffset(hotspot);
+  if (savedOffset) return savedOffset;
+  return normalizeInfoFrameAnchorOffset({
+    offsetX: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X,
+    offsetY: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y
+  });
+}
+
+function updatePreviewModalAnchorOffsetFromCurrentPosition() {
+  const hotspot = getInfoHotspotByContext(previewHotspotContext);
+  if (!hotspot || !previewModalContent || !previewHotspotContext) return;
+  const hotspotPoint = getHotspotViewportPoint(hotspot);
+  if (!hotspotPoint) return;
+  const rect = previewModalContent.getBoundingClientRect();
+  const left = parsePixelStyleValue(previewModalContent.style.left, rect.left);
+  const top = parsePixelStyleValue(previewModalContent.style.top, rect.top);
+  previewHotspotContext.anchorOffset = normalizeInfoFrameAnchorOffset({
+    offsetX: left - hotspotPoint.x,
+    offsetY: top - hotspotPoint.y
+  });
+}
+
 function stopPreviewModalDrag() {
   if (!previewModalDragState) return;
   previewModalDragState = null;
   window.removeEventListener('pointermove', handlePreviewModalDragMove);
   window.removeEventListener('pointerup', stopPreviewModalDrag);
   window.removeEventListener('pointercancel', stopPreviewModalDrag);
-  // Drag on preview is temporary (session-only): do not overwrite saved origin.
+  // Keep drag temporary for this preview session, but preserve its anchor to the hotspot while panning.
+  updatePreviewModalAnchorOffsetFromCurrentPosition();
 }
 
 function handlePreviewModalDragMove(event) {
@@ -651,6 +656,7 @@ function handlePreviewModalDragMove(event) {
   const nextTop = Math.min(maxTop, Math.max(8, previewModalDragState.startTop + deltaY));
   previewModalContent.style.left = `${Math.round(nextLeft)}px`;
   previewModalContent.style.top = `${Math.round(nextTop)}px`;
+  updatePreviewModalAnchorOffsetFromCurrentPosition();
 }
 
 function maybeStartPreviewModalDrag(event) {
@@ -1662,6 +1668,14 @@ function applyRichLayoutColumnWidths(layoutEl, weights) {
   return true;
 }
 
+function buildDefaultRichLayoutWidthValue(columnCount, gapPx = DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX) {
+  const safeCols = normalizeRichLayoutColumns(columnCount, 2);
+  const safeGap = Math.max(0, Number.parseInt(String(gapPx ?? DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX), 10) || 0);
+  const totalChars = safeCols * DEFAULT_RICH_LAYOUT_COLUMN_CHAR_WIDTH;
+  const totalGap = Math.max(0, safeCols - 1) * safeGap;
+  return `calc(${totalChars}ch + ${totalGap}px)`;
+}
+
 function parseRichLayoutColumns(layoutEl) {
   if (!layoutEl) return 2;
   const raw = String(layoutEl.getAttribute('data-layout') || '');
@@ -1727,14 +1741,25 @@ function applySpacingToRichLayout(layoutEl, spacingValue) {
   if (!layoutEl) return false;
   const safeSpacing = sanitizeRichParagraphSpacingValue(spacingValue);
   if (!safeSpacing) return false;
-  layoutEl.style.marginTop = safeSpacing;
-  layoutEl.style.marginBottom = safeSpacing;
-  const columns = Array.from(layoutEl.querySelectorAll(':scope > [data-col]'));
-  columns.forEach((column) => {
-    column.style.paddingTop = safeSpacing;
-    column.style.paddingBottom = safeSpacing;
-  });
+  layoutEl.style.columnGap = safeSpacing;
+  layoutEl.style.gap = safeSpacing;
   return true;
+}
+
+function setEqualRichLayoutColumnWidths() {
+  const layout = getSelectedRichLayoutElement();
+  if (!layout) {
+    updateStatus('Select a columns layout first.');
+    return;
+  }
+  const columns = getRichLayoutDirectColumns(layout);
+  if (!columns.length) {
+    updateStatus('Select a columns layout first.');
+    return;
+  }
+  applyRichLayoutColumnWidths(layout, getDefaultRichLayoutWeights(columns.length));
+  updateRichLayoutBlockResizeHandle();
+  updateStatus('All selected columns set to equal width.');
 }
 
 function getRichLayoutDirectColumns(layoutEl) {
@@ -1764,6 +1789,11 @@ function handleRichLayoutResizeMove(event) {
     startWidths,
     minWidth
   } = richLayoutResizeState;
+  const currentRect = layout.getBoundingClientRect();
+  const preservedHeight = Math.max(
+    40,
+    Math.round(parsePixelStyleValue(layout.style.height, currentRect.height))
+  );
   const delta = event.clientX - startX;
   let resizedColumnWidth = startWidths[index] + delta;
   if (resizedColumnWidth < minWidth) {
@@ -1783,12 +1813,7 @@ function handleRichLayoutResizeMove(event) {
     + (Math.max(0, nextWidths.length - 1) * gap);
   layout.style.width = `${Math.round(Math.max(180, nextLayoutWidth))}px`;
   applyRichLayoutColumnWidths(layout, nextWidths);
-
-  // Keep columns block height in sync with content reflow.
-  const layoutRect = layout.getBoundingClientRect();
-  const layoutWidth = Math.max(180, Math.round(layoutRect.width || 0));
-  const naturalHeight = measureRichLayoutNaturalHeight(layout, layoutWidth);
-  layout.style.height = `${Math.round(Math.max(40, naturalHeight))}px`;
+  layout.style.height = `${preservedHeight}px`;
   updateRichLayoutBlockResizeHandle();
 }
 
@@ -1990,20 +2015,6 @@ function syncRichEditorSelectionState() {
   }
 
   if (
-    selectedRichTableCell &&
-    (!richEditorSurface.contains(selectedRichTableCell) || !selectedRichTableCell.isConnected)
-  ) {
-    setSelectedRichTableCell(null);
-  } else {
-    const currentCell = getSelectedRichTableCell();
-    if (currentCell !== selectedRichTableCell) {
-      setSelectedRichTableCell(currentCell);
-    } else {
-      updateRichTableResizeHandles();
-    }
-  }
-
-  if (
     selectedRichLayoutElement &&
     (!richEditorSurface.contains(selectedRichLayoutElement) || !selectedRichLayoutElement.isConnected)
   ) {
@@ -2170,255 +2181,20 @@ function getRichMediaElementAtPoint(clientX, clientY) {
   return null;
 }
 
-function ensureRichTableResizeHandles() {
-  if (!richTableColResizeHandleEl) {
-    const colHandle = document.createElement('div');
-    colHandle.className = 'rich-table-resize-handle rich-table-col-handle hidden';
-    colHandle.title = 'Drag to resize column';
-    colHandle.addEventListener('pointerdown', (event) => startRichTableResize(event, 'col'));
-    document.body.appendChild(colHandle);
-    richTableColResizeHandleEl = colHandle;
-  }
-  if (!richTableRowResizeHandleEl) {
-    const rowHandle = document.createElement('div');
-    rowHandle.className = 'rich-table-resize-handle rich-table-row-handle hidden';
-    rowHandle.title = 'Drag to resize row';
-    rowHandle.addEventListener('pointerdown', (event) => startRichTableResize(event, 'row'));
-    document.body.appendChild(rowHandle);
-    richTableRowResizeHandleEl = rowHandle;
-  }
-}
-
-function hideRichTableResizeHandles() {
-  richTableColResizeHandleEl?.classList.add('hidden');
-  richTableRowResizeHandleEl?.classList.add('hidden');
-}
-
-function setSelectedRichTableCell(cellEl) {
-  if (selectedRichTableCell && selectedRichTableCell !== cellEl) {
-    selectedRichTableCell.classList.remove('rich-table-cell-selected');
-  }
-  selectedRichTableCell = cellEl || null;
-  if (selectedRichTableCell) {
-    selectedRichTableCell.classList.add('rich-table-cell-selected');
-  }
-  updateRichTableResizeHandles();
-}
-
-function getSelectedRichTableCell() {
-  if (
-    selectedRichTableCell &&
-    richEditorSurface &&
-    richEditorSurface.contains(selectedRichTableCell)
-  ) {
-    return selectedRichTableCell;
-  }
-  if (!richEditorSurface) return null;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  let node = selection.anchorNode;
-  if (!node) return null;
-  if (node.nodeType === Node.TEXT_NODE) {
-    node = node.parentElement;
-  }
-  if (!(node instanceof Element)) return null;
-  const cell = node.closest('td,th');
-  if (!cell || !richEditorSurface.contains(cell)) return null;
-  return cell;
-}
-
-function updateRichTableResizeHandles() {
-  if (!richEditorModal?.classList.contains('visible')) {
-    hideRichTableResizeHandles();
-    return;
-  }
-  const cell = getSelectedRichTableCell();
-  if (!cell || !cell.isConnected) {
-    hideRichTableResizeHandles();
-    return;
-  }
-  ensureRichTableResizeHandles();
-  const rect = cell.getBoundingClientRect();
-  if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(rect.height) || rect.height <= 0) {
-    hideRichTableResizeHandles();
-    return;
-  }
-  richTableColResizeHandleEl.style.left = `${Math.round(rect.right)}px`;
-  richTableColResizeHandleEl.style.top = `${Math.round(rect.top + rect.height / 2)}px`;
-  richTableColResizeHandleEl.classList.remove('hidden');
-
-  richTableRowResizeHandleEl.style.left = `${Math.round(rect.left + rect.width / 2)}px`;
-  richTableRowResizeHandleEl.style.top = `${Math.round(rect.bottom)}px`;
-  richTableRowResizeHandleEl.classList.remove('hidden');
-}
-
-function stopRichTableResize() {
-  if (!richTableResizeState) return;
-  richTableResizeState = null;
-  window.removeEventListener('pointermove', handleRichTableResizeMove);
-  window.removeEventListener('pointerup', stopRichTableResize);
-  window.removeEventListener('pointercancel', stopRichTableResize);
-}
-
-function getCellsInColumn(table, columnIndex) {
-  const cells = [];
-  Array.from(table.rows || []).forEach((row) => {
-    const cell = row.cells?.[columnIndex];
-    if (cell) cells.push(cell);
-  });
-  return cells;
-}
-
-function handleRichTableResizeMove(event) {
-  if (!richTableResizeState) return;
-  const { mode, table, row, columnIndex, startX, startY, startSize } = richTableResizeState;
-  if (!table?.isConnected || !row?.isConnected) {
-    stopRichTableResize();
-    hideRichTableResizeHandles();
-    return;
-  }
-  if (mode === 'col') {
-    const nextWidth = Math.round(Math.max(40, Math.min(1600, startSize + (event.clientX - startX))));
-    const cells = getCellsInColumn(table, columnIndex);
-    cells.forEach((cell) => {
-      cell.style.width = `${nextWidth}px`;
-    });
-  } else {
-    const nextHeight = Math.round(Math.max(24, Math.min(900, startSize + (event.clientY - startY))));
-    row.style.height = `${nextHeight}px`;
-  }
-  updateRichTableResizeHandles();
-}
-
-function startRichTableResize(event, mode) {
-  const cell = getSelectedRichTableCell();
-  if (!cell) return;
-  const table = cell.closest('table');
-  const row = cell.parentElement;
-  if (!table || !row) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const columnIndex = cell.cellIndex;
-  if (mode === 'col') {
-    const cells = getCellsInColumn(table, columnIndex);
-    const measuredWidth = Math.round(cell.getBoundingClientRect().width);
-    cells.forEach((columnCell) => {
-      columnCell.style.width = `${measuredWidth}px`;
-    });
-    richTableResizeState = {
-      mode,
-      table,
-      row,
-      columnIndex,
-      startX: event.clientX,
-      startY: event.clientY,
-      startSize: measuredWidth
-    };
-  } else {
-    const measuredHeight = Math.round(row.getBoundingClientRect().height);
-    row.style.height = `${measuredHeight}px`;
-    richTableResizeState = {
-      mode,
-      table,
-      row,
-      columnIndex,
-      startX: event.clientX,
-      startY: event.clientY,
-      startSize: measuredHeight
-    };
-  }
-  window.addEventListener('pointermove', handleRichTableResizeMove);
-  window.addEventListener('pointerup', stopRichTableResize);
-  window.addEventListener('pointercancel', stopRichTableResize);
-}
-
-function buildRichTableHtml(rows, cols) {
-  const safeRows = Math.max(1, Math.min(12, Number.parseInt(rows, 10) || 2));
-  const safeCols = Math.max(1, Math.min(8, Number.parseInt(cols, 10) || 2));
-  const rowHtml = [];
-  for (let r = 0; r < safeRows; r += 1) {
-    const cells = [];
-    for (let c = 0; c < safeCols; c += 1) {
-      cells.push('<td><br></td>');
-    }
-    rowHtml.push(`<tr>${cells.join('')}</tr>`);
-  }
-  return `<table class="rich-table"><tbody>${rowHtml.join('')}</tbody></table><p><br></p>`;
-}
-
-function insertTableAtCurrentLine(rows = 2, cols = 2) {
-  if (!richEditorSurface) return null;
-  const template = document.createElement('template');
-  template.innerHTML = buildRichTableHtml(rows, cols);
-  const table = template.content.querySelector('table.rich-table');
-  const trailingParagraph = template.content.querySelector('p');
-  if (!(table instanceof HTMLElement)) return null;
-  const trailing = trailingParagraph instanceof HTMLElement ? trailingParagraph : null;
-
-  const selection = window.getSelection();
-  let range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-  if (!range || !isRangeInsideRichEditor(range)) {
-    const endRange = document.createRange();
-    endRange.selectNodeContents(richEditorSurface);
-    endRange.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(endRange);
-    range = endRange;
-  }
-
-  const block = getClosestRichBlock(range.startContainer);
-  if (block && block.parentNode) {
-    const parent = block.parentNode;
-    if (isEffectivelyEmptyParagraph(block)) {
-      parent.insertBefore(table, block);
-      if (trailing) {
-        parent.insertBefore(trailing, block);
-      }
-      block.remove();
-    } else {
-      const beforeRange = document.createRange();
-      beforeRange.selectNodeContents(block);
-      beforeRange.setEnd(range.startContainer, range.startOffset);
-      const atStartOfBlock = String(beforeRange.toString() || '').trim().length === 0;
-      if (atStartOfBlock) {
-        parent.insertBefore(table, block);
-        if (trailing) {
-          parent.insertBefore(trailing, block);
-        }
-      } else if (block.nextSibling) {
-        parent.insertBefore(table, block.nextSibling);
-        if (trailing) {
-          parent.insertBefore(trailing, block.nextSibling);
-        }
-      } else {
-        parent.appendChild(table);
-        if (trailing) {
-          parent.appendChild(trailing);
-        }
-      }
-    }
-  } else {
-    richEditorSurface.appendChild(table);
-    if (trailing) {
-      richEditorSurface.appendChild(trailing);
-    }
-  }
-  return table;
-}
-
 function buildRichColumnsHtml(columnCount = 2) {
   const safeCols = normalizeRichLayoutColumns(columnCount, 2);
   const defaultWeights = getDefaultRichLayoutWeights(safeCols);
   const defaultTemplate = defaultWeights
     .map((value) => `minmax(0,${Math.max(1, value).toFixed(4)}fr)`)
     .join(' ');
+  const defaultWidth = buildDefaultRichLayoutWidthValue(safeCols);
   const columnsHtml = [];
   for (let index = 1; index <= safeCols; index += 1) {
     columnsHtml.push(
       `<div data-col="${index}"><p><strong>Column ${index}</strong></p><p><br></p></div>`
     );
   }
-  return `<div data-layout="columns-${safeCols}" data-col-widths="${serializeRichLayoutWeights(defaultWeights)}" style="grid-template-columns:${defaultTemplate};">${columnsHtml.join('')}</div><p><br></p>`;
+  return `<div data-layout="columns-${safeCols}" data-col-widths="${serializeRichLayoutWeights(defaultWeights)}" style="grid-template-columns:${defaultTemplate};width:${defaultWidth};gap:${DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX}px;">${columnsHtml.join('')}</div><p><br></p>`;
 }
 
 function isEffectivelyEmptyParagraph(node) {
@@ -2566,15 +2342,13 @@ function insertRichColumnsLayout(columnCount = 2) {
   const insertedLayout = insertColumnsLayoutAtCurrentLine(safeCols);
   if (insertedLayout instanceof HTMLElement) {
     renumberRichLayoutColumns(insertedLayout);
+    insertedLayout.style.width = buildDefaultRichLayoutWidthValue(safeCols);
+    applyRichLayoutColumnWidths(insertedLayout, getDefaultRichLayoutWeights(safeCols));
+    applySpacingToRichLayout(insertedLayout, String(DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX));
     const initialRect = insertedLayout.getBoundingClientRect();
-    if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
-      insertedLayout.style.width = `${Math.round(initialRect.width)}px`;
-    }
     if (Number.isFinite(initialRect.height) && initialRect.height > 0) {
       insertedLayout.style.height = `${Math.round(Math.max(40, initialRect.height))}px`;
     }
-    applyRichLayoutColumnWidths(insertedLayout, getDefaultRichLayoutWeights(safeCols));
-    applySpacingToRichLayout(insertedLayout, '2');
     setSelectedRichLayoutElement(insertedLayout);
   }
   const firstParagraph = insertedLayout?.querySelector('[data-col="1"] p');
@@ -2710,100 +2484,59 @@ function clearSelectedRichLayout() {
   updateStatus('Columns layout removed.');
 }
 
-function insertRichTable(defaultRows = 2, defaultCols = 2) {
-  const rows = prompt('Rows', String(defaultRows));
-  if (rows === null) return;
-  const cols = prompt('Columns', String(defaultCols));
-  if (cols === null) return;
-  const insertedTable = insertTableAtCurrentLine(rows, cols);
-  const firstCell = insertedTable?.querySelector('td,th');
-  if (firstCell instanceof HTMLElement) {
-    firstCell.focus();
-    setSelectedRichTableCell(firstCell);
-  }
-  updateStatus('Table inserted.');
-}
-
-function addRichTableColumn() {
-  const cell = getSelectedRichTableCell();
-  if (!cell) {
-    updateStatus('Select a table cell first.');
+function deleteCurrentRichParagraph() {
+  if (!richEditorSurface) {
+    updateStatus('Open Visual Editor first.');
     return;
   }
-  const table = cell.closest('table');
-  const columnIndex = cell.cellIndex + 1;
-  Array.from(table.rows || []).forEach((row) => {
-    const refCell = row.cells[columnIndex] || null;
-    const tagName = row.cells?.[0]?.tagName?.toLowerCase() === 'th' ? 'th' : 'td';
-    const newCell = document.createElement(tagName);
-    newCell.innerHTML = '<br>';
-    row.insertBefore(newCell, refCell);
-  });
-  updateStatus('Column added.');
-  updateRichTableResizeHandles();
-}
-
-function deleteRichTableColumn() {
-  const cell = getSelectedRichTableCell();
-  if (!cell) {
-    updateStatus('Select a table cell first.');
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    updateStatus('Place the cursor inside the row you want to delete.');
     return;
   }
-  const table = cell.closest('table');
-  const columnIndex = cell.cellIndex;
-  const columnCount = Math.max(...Array.from(table.rows || []).map((row) => row.cells.length));
-  if (columnCount <= 1) {
-    updateStatus('Table must keep at least one column.');
+  let anchorNode = selection.anchorNode;
+  if (anchorNode?.nodeType === Node.TEXT_NODE) {
+    anchorNode = anchorNode.parentElement;
+  }
+  const paragraph = anchorNode instanceof Element
+    ? anchorNode.closest('p')
+    : null;
+  if (!(paragraph instanceof HTMLParagraphElement) || !richEditorSurface.contains(paragraph)) {
+    updateStatus('Place the cursor inside the row you want to delete.');
     return;
   }
-  Array.from(table.rows || []).forEach((row) => {
-    if (row.cells[columnIndex]) {
-      row.deleteCell(columnIndex);
-    }
-  });
-  setSelectedRichTableCell(null);
-  updateStatus('Column removed.');
-}
-
-function addRichTableRow() {
-  const cell = getSelectedRichTableCell();
-  if (!cell) {
-    updateStatus('Select a table cell first.');
+  const parent = paragraph.parentNode;
+  if (!parent) {
+    updateStatus('Unable to delete current row.');
     return;
   }
-  const table = cell.closest('table');
-  const currentRow = cell.parentElement;
-  const colCount = currentRow.cells.length || 1;
-  const newRow = currentRow.cloneNode(false);
-  for (let i = 0; i < colCount; i += 1) {
-    const tagName = currentRow.cells[i]?.tagName?.toLowerCase() === 'th' ? 'th' : 'td';
-    const newCell = document.createElement(tagName);
-    newCell.innerHTML = '<br>';
-    newRow.appendChild(newCell);
-  }
-  if (currentRow.nextSibling) {
-    currentRow.parentNode.insertBefore(newRow, currentRow.nextSibling);
+  const fallbackParagraph = document.createElement('p');
+  fallbackParagraph.innerHTML = '<br>';
+  const previousSibling = paragraph.previousSibling;
+  const nextSibling = paragraph.nextSibling;
+  paragraph.remove();
+  let targetNode = null;
+  if (previousSibling instanceof Node && previousSibling.parentNode === parent) {
+    targetNode = previousSibling;
+  } else if (nextSibling instanceof Node && nextSibling.parentNode === parent) {
+    targetNode = nextSibling;
   } else {
-    currentRow.parentNode.appendChild(newRow);
+    parent.appendChild(fallbackParagraph);
+    targetNode = fallbackParagraph;
   }
-  updateStatus('Row added.');
-}
-
-function deleteRichTableRow() {
-  const cell = getSelectedRichTableCell();
-  if (!cell) {
-    updateStatus('Select a table cell first.');
-    return;
+  const range = document.createRange();
+  if (targetNode instanceof HTMLParagraphElement) {
+    range.selectNodeContents(targetNode);
+    range.collapse(true);
+  } else {
+    range.setStartAfter(targetNode);
+    range.collapse(true);
   }
-  const table = cell.closest('table');
-  const currentRow = cell.parentElement;
-  if ((table.rows || []).length <= 1) {
-    updateStatus('Table must keep at least one row.');
-    return;
-  }
-  currentRow.remove();
-  setSelectedRichTableCell(null);
-  updateStatus('Row removed.');
+  selection.removeAllRanges();
+  selection.addRange(range);
+  richEditorSavedRange = range.cloneRange();
+  syncRichEditorSelectionState();
+  updateStatus('Current row deleted.');
 }
 
 function getInfoHotspotByContext(context) {
@@ -2845,16 +2578,14 @@ function openRichEditorModal(hotspot = getSelectedInfoHotspot()) {
 
   const sourceHtml = sanitizeRichHtml(getInfoHotspotRichContent(hotspot));
   const template = document.createElement('template');
-  template.innerHTML = sourceHtml || '<p></p>';
+  template.innerHTML = sourceHtml || '';
   resolveRichMediaReferencesInContainer(template.content, state.project, { preferDataUrl: true });
-  richEditorSurface.innerHTML = template.innerHTML || '<p></p>';
+  richEditorSurface.innerHTML = template.innerHTML || '';
   // Keep layouts independent from viewport size by freezing their initial dimensions.
   freezeRichLayoutDimensionsInSurface();
   applyRichEditorSurfaceVisualStyle(hotspot);
   ensureRichModalResizeHandle();
   ensureRichImageResizeHandle();
-  ensureRichTableResizeHandles();
-  setSelectedRichTableCell(null);
   setSelectedRichLayoutElement(null);
   setSelectedRichImageElement(null);
   richEditorSavedRange = null;
@@ -2872,14 +2603,11 @@ function closeRichEditorModal() {
   stopRichEditorDrag();
   stopRichModalResize();
   stopRichImageResize();
-  stopRichTableResize();
   stopRichLayoutResize();
   stopRichLayoutBlockResize();
-  setSelectedRichTableCell(null);
   setSelectedRichLayoutElement(null);
   setSelectedRichImageElement(null);
   hideRichImageResizeHandle();
-  hideRichTableResizeHandles();
   hideRichLayoutBlockResizeHandle();
   hideRichModalResizeHandle();
   richEditorSurface.classList.remove('drag-zone');
@@ -3070,7 +2798,7 @@ function saveRichEditorModalContent({ closeAfterSave = false, refreshPanel = fal
     }
     return;
   }
-  let html = sanitizeRichHtml(richEditorSurface.innerHTML || '<p></p>');
+  let html = sanitizeRichHtml(richEditorSurface.innerHTML || '');
   applyRichEditorModalResizeConstraints();
   html = compactRichHtmlMediaRefs(html, state.project, {
     suggestedName: hotspot.title || hotspot.id || 'inline-image'
@@ -3477,6 +3205,10 @@ function getSceneLinkColorHex(colorKey) {
   return FLOORPLAN_COLOR_MAP[normalizeSceneLinkColorKey(colorKey)];
 }
 
+function getInfoHotspotColorKey(hotspot) {
+  return normalizeFloorplanColorKey(hotspot?.markerColorKey || DEFAULT_INFO_HOTSPOT_COLOR_KEY);
+}
+
 function colorLabelFromKey(colorKey) {
   const labels = {
     yellow: 'Yellow',
@@ -3573,9 +3305,14 @@ function applyPreviewModalFrameSize(hotspot) {
     previewModalContent.style.height = `${height}px`;
     previewModalBody.style.height = `${height}px`;
     previewModalBody.style.maxHeight = `${height}px`;
-    // Keep preview in saved absolute viewport position (scaled across viewport size),
-    // not anchored to hotspot screen point.
-    const framePosition = getScaledInfoFramePositionForViewport(hotspot);
+    const hotspotPoint = getHotspotViewportPoint(hotspot);
+    const anchorOffset = getPreviewModalAnchorOffset(hotspot);
+    const framePosition = hotspotPoint && anchorOffset
+      ? {
+        left: Math.round(hotspotPoint.x + anchorOffset.offsetX),
+        top: Math.round(hotspotPoint.y + anchorOffset.offsetY)
+      }
+      : getScaledInfoFramePositionForViewport(hotspot);
     let left = Number.isFinite(framePosition.left) ? framePosition.left : DEFAULT_INFO_FRAME_LEFT;
     let top = Number.isFinite(framePosition.top) ? framePosition.top : DEFAULT_INFO_FRAME_TOP;
     const maxLeft = Math.max(8, window.innerWidth - width - 8);
@@ -4831,7 +4568,8 @@ function makeMarkerRenderSignature(scene, active) {
   const yaw = Number(params.yaw || 0).toFixed(4);
   const pitch = Number(params.pitch || 0).toFixed(4);
   const fov = Number(params.fov || 1.4).toFixed(4);
-  return `${scene.id}|${state.selectedHotspotId || ''}|${yaw}|${pitch}|${fov}`;
+  const previewHotspotId = previewModal?.classList.contains('visible') ? (previewHotspotContext?.hotspotId || '') : '';
+  return `${scene.id}|${state.selectedHotspotId || ''}|${previewHotspotId}|${yaw}|${pitch}|${fov}`;
 }
 
 function buildHotspotMarkerElement(hotspotId) {
@@ -4855,13 +4593,24 @@ function updateHotspotMarkerElement(marker, hotspot, active, scale) {
 
   marker.style.display = '';
   const isSceneLink = isSceneLinkHotspot(hotspot);
-  marker.className = `hotspot-marker${isSceneLink ? ' scene-link-marker' : ' info-hotspot-marker'}${hotspot.id === state.selectedHotspotId ? ' active' : ''}`;
+  const isPreviewOpenForHotspot = Boolean(
+    previewModal?.classList.contains('visible') &&
+    previewHotspotContext?.hotspotId === hotspot.id
+  );
+  marker.className = `hotspot-marker${isSceneLink ? ' scene-link-marker' : ' info-hotspot-marker'}${hotspot.id === state.selectedHotspotId ? ' active' : ''}${isPreviewOpenForHotspot ? ' preview-open' : ''}`;
   if (isSceneLink) {
     const linkColor = getSceneLinkColorHex(hotspot.linkColorKey);
     marker.style.setProperty('--scene-link-color', linkColor);
     marker.style.setProperty('--scene-link-border', darkenHex(linkColor, 0.24));
     marker.style.setProperty('--scene-link-ring', withAlpha(linkColor, 0.35));
+    marker.style.setProperty('--marker-active-ring', withAlpha(linkColor, 0.25));
+    marker.style.setProperty('--marker-active-glow', withAlpha(linkColor, 0.7));
   } else {
+    const markerColor = FLOORPLAN_COLOR_MAP[getInfoHotspotColorKey(hotspot)] || FLOORPLAN_COLOR_MAP[DEFAULT_INFO_HOTSPOT_COLOR_KEY];
+    marker.style.setProperty('--info-hotspot-color', markerColor);
+    marker.style.setProperty('--info-hotspot-border', darkenHex(markerColor, 0.28));
+    marker.style.setProperty('--marker-active-ring', withAlpha(markerColor, 0.25));
+    marker.style.setProperty('--marker-active-glow', withAlpha(markerColor, 0.7));
     marker.style.removeProperty('--scene-link-color');
     marker.style.removeProperty('--scene-link-border');
     marker.style.removeProperty('--scene-link-ring');
@@ -5019,7 +4768,14 @@ function openHotspotPreview(hotspotId) {
   previewModalBody.style.removeProperty('background-color');
 
   if (isInfoHotspot(hotspot)) {
-    previewHotspotContext = { sceneId: scene.id, hotspotId: hotspot.id };
+    previewHotspotContext = {
+      sceneId: scene.id,
+      hotspotId: hotspot.id,
+      anchorOffset: getInfoHotspotFrameAnchorOffset(hotspot) || normalizeInfoFrameAnchorOffset({
+        offsetX: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X,
+        offsetY: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y
+      })
+    };
     previewModal.classList.add('preview-modal-rich-like');
     previewModalContent?.classList.add('modal-content-rich-preview');
     const richHtml = sanitizeRichHtml(getInfoHotspotRichContent(hotspot));
@@ -5032,6 +4788,7 @@ function openHotspotPreview(hotspotId) {
     resolveRichMediaReferencesInContainer(previewModalBody, state.project, { preferDataUrl: true });
     previewModal.classList.add('visible');
     previewModal.setAttribute('aria-hidden', 'false');
+    scheduleMarkerRender();
     return;
   }
 
@@ -5127,6 +4884,7 @@ function openHotspotPreview(hotspotId) {
 
   previewModal.classList.add('visible');
   previewModal.setAttribute('aria-hidden', 'false');
+  scheduleMarkerRender();
 }
 
 function closeHotspotPreview() {
@@ -5154,6 +4912,7 @@ function closeHotspotPreview() {
   resetPreviewModalFrameSize();
   previewModal.classList.remove('visible');
   previewModal.setAttribute('aria-hidden', 'true');
+  scheduleMarkerRender();
 }
 
 function setSectionCollapsed(buttonElement, bodyElement, next) {
@@ -5396,6 +5155,10 @@ function renderInfoHotspotList() {
     option.textContent = 'No scene selected';
     infoHotspotSelect.appendChild(option);
     infoHotspotSelect.disabled = true;
+    if (infoHotspotColorSelect) {
+      renderSceneLinkColorOptions(infoHotspotColorSelect, DEFAULT_INFO_HOTSPOT_COLOR_KEY);
+      infoHotspotColorSelect.disabled = true;
+    }
     if (btnAddHotspot) btnAddHotspot.disabled = true;
     if (btnDeleteHotspot) btnDeleteHotspot.disabled = true;
     if (btnEditHotspot) btnEditHotspot.disabled = true;
@@ -5430,6 +5193,13 @@ function renderInfoHotspotList() {
     infoHotspotSelect.value = '';
   }
   infoHotspotSelect.disabled = !infoHotspots.length;
+  if (infoHotspotColorSelect) {
+    renderSceneLinkColorOptions(
+      infoHotspotColorSelect,
+      selectedInfo ? getInfoHotspotColorKey(selectedInfo) : DEFAULT_INFO_HOTSPOT_COLOR_KEY
+    );
+    infoHotspotColorSelect.disabled = !selectedInfo || !isInfoHotspotInteractionModeActive();
+  }
   if (btnAddHotspot) btnAddHotspot.disabled = false;
   if (btnDeleteHotspot) btnDeleteHotspot.disabled = !selectedInfo;
   if (btnEditHotspot) btnEditHotspot.disabled = !selectedInfo;
@@ -5746,6 +5516,13 @@ function renderContentBlocks() {
   const hotspot = getSelectedInfoHotspot();
   const scene = getSelectedScene();
   const infoContentEnabled = isInfoHotspotInteractionModeActive();
+  if (infoContentSectionBody) {
+    infoContentSectionBody.hidden = !infoContentEnabled;
+    infoContentSectionBody.setAttribute('aria-hidden', infoContentEnabled ? 'false' : 'true');
+  }
+  if (!infoContentEnabled) {
+    return;
+  }
   if (!hotspot) {
     const hint = document.createElement('div');
     hint.className = 'panel-hint';
@@ -5935,12 +5712,6 @@ function renderContentBlocks() {
   btnUploadLocalVideo.textContent = 'Upload Video';
   toolbar.appendChild(btnUploadLocalVideo);
 
-  const btnInsertTwoCols = document.createElement('button');
-  btnInsertTwoCols.className = 'btn ghost';
-  btnInsertTwoCols.type = 'button';
-  btnInsertTwoCols.textContent = '2 Col';
-  toolbar.appendChild(btnInsertTwoCols);
-
   const btnInsertCols = document.createElement('button');
   btnInsertCols.className = 'btn ghost';
   btnInsertCols.type = 'button';
@@ -5959,11 +5730,11 @@ function renderContentBlocks() {
   btnLayoutDelCol.textContent = '-LCol';
   toolbar.appendChild(btnLayoutDelCol);
 
-  const btnLayoutDelete = document.createElement('button');
-  btnLayoutDelete.className = 'btn ghost';
-  btnLayoutDelete.type = 'button';
-  btnLayoutDelete.textContent = 'Delete Cols';
-  toolbar.appendChild(btnLayoutDelete);
+  const btnLayoutDeleteBlock = document.createElement('button');
+  btnLayoutDeleteBlock.className = 'btn ghost';
+  btnLayoutDeleteBlock.type = 'button';
+  btnLayoutDeleteBlock.textContent = 'Delete Block';
+  toolbar.appendChild(btnLayoutDeleteBlock);
 
   const colsSpaceLabel = document.createElement('label');
   colsSpaceLabel.className = 'rich-font-size-control';
@@ -5979,6 +5750,12 @@ function renderContentBlocks() {
   colsSpaceInput.value = '2';
   toolbar.appendChild(colsSpaceInput);
 
+  const btnLayoutEqual = document.createElement('button');
+  btnLayoutEqual.className = 'btn ghost';
+  btnLayoutEqual.type = 'button';
+  btnLayoutEqual.textContent = 'Equal';
+  toolbar.appendChild(btnLayoutEqual);
+
   const btnLayoutBelow = document.createElement('button');
   btnLayoutBelow.className = 'btn ghost';
   btnLayoutBelow.type = 'button';
@@ -5991,35 +5768,11 @@ function renderContentBlocks() {
   btnLayoutAbove.textContent = 'Above';
   toolbar.appendChild(btnLayoutAbove);
 
-  const btnInsertTable = document.createElement('button');
-  btnInsertTable.className = 'btn ghost';
-  btnInsertTable.type = 'button';
-  btnInsertTable.textContent = 'Table';
-  toolbar.appendChild(btnInsertTable);
-
-  const btnTableAddCol = document.createElement('button');
-  btnTableAddCol.className = 'btn ghost';
-  btnTableAddCol.type = 'button';
-  btnTableAddCol.textContent = '+Col';
-  toolbar.appendChild(btnTableAddCol);
-
-  const btnTableDelCol = document.createElement('button');
-  btnTableDelCol.className = 'btn ghost';
-  btnTableDelCol.type = 'button';
-  btnTableDelCol.textContent = '-Col';
-  toolbar.appendChild(btnTableDelCol);
-
-  const btnTableAddRow = document.createElement('button');
-  btnTableAddRow.className = 'btn ghost';
-  btnTableAddRow.type = 'button';
-  btnTableAddRow.textContent = '+Row';
-  toolbar.appendChild(btnTableAddRow);
-
-  const btnTableDelRow = document.createElement('button');
-  btnTableDelRow.className = 'btn ghost';
-  btnTableDelRow.type = 'button';
-  btnTableDelRow.textContent = '-Row';
-  toolbar.appendChild(btnTableDelRow);
+  const btnDeleteRow = document.createElement('button');
+  btnDeleteRow.className = 'btn ghost';
+  btnDeleteRow.type = 'button';
+  btnDeleteRow.textContent = 'Delete Row';
+  toolbar.appendChild(btnDeleteRow);
 
   const btnImageSize = document.createElement('button');
   btnImageSize.className = 'btn ghost';
@@ -6059,18 +5812,14 @@ function renderContentBlocks() {
     btnUploadLocalImage,
     btnInsertVideoUrl,
     btnUploadLocalVideo,
-    btnInsertTwoCols,
     btnInsertCols,
     btnLayoutAddCol,
     btnLayoutDelCol,
-    btnLayoutDelete,
+    btnLayoutDeleteBlock,
+    btnLayoutEqual,
     colsSpaceInput,
     btnLayoutBelow,
-    btnInsertTable,
-    btnTableAddCol,
-    btnTableDelCol,
-    btnTableAddRow,
-    btnTableDelRow,
+    btnDeleteRow,
     btnImageSize,
     btnClearFormat,
     sizeInput,
@@ -6387,10 +6136,6 @@ function renderContentBlocks() {
     }
   });
 
-  btnInsertTwoCols.addEventListener('click', () => {
-    if (runVisualEditorAction(() => insertRichColumnsLayout(2))) return;
-    insertIntoRichSourceModal(`\n${buildRichColumnsHtml(2)}\n`, hotspot);
-  });
   btnInsertCols.addEventListener('click', () => {
     const input = prompt('How many columns? (1-6)', '3');
     if (input === null) return;
@@ -6408,9 +6153,14 @@ function renderContentBlocks() {
     updateStatus('Open Visual Editor to edit layout columns.');
     openRichEditorModal(hotspot);
   });
-  btnLayoutDelete.addEventListener('click', () => {
+  btnLayoutDeleteBlock.addEventListener('click', () => {
     if (runVisualEditorAction(() => clearSelectedRichLayout())) return;
     updateStatus('Open Visual Editor to delete selected columns block.');
+    openRichEditorModal(hotspot);
+  });
+  btnLayoutEqual.addEventListener('click', () => {
+    if (runVisualEditorAction(() => setEqualRichLayoutColumnWidths())) return;
+    updateStatus('Open Visual Editor to normalize selected columns width.');
     openRichEditorModal(hotspot);
   });
   colsSpaceInput.addEventListener('input', () => {
@@ -6422,7 +6172,7 @@ function renderContentBlocks() {
       }
       applySpacingToRichLayout(layout, colsSpaceInput.value);
     })) return;
-    applyColumnsSpacingInRichSourceModal(colsSpaceInput.value, hotspot);
+    updateStatus('Open Visual Editor and select a columns block first.');
   });
   colsSpaceInput.addEventListener('change', () => {
     if (runVisualEditorAction(() => {
@@ -6433,7 +6183,7 @@ function renderContentBlocks() {
       }
       applySpacingToRichLayout(layout, colsSpaceInput.value);
     })) return;
-    applyColumnsSpacingInRichSourceModal(colsSpaceInput.value, hotspot);
+    updateStatus('Open Visual Editor and select a columns block first.');
   });
   btnLayoutBelow.addEventListener('click', () => {
     if (runVisualEditorAction(() => insertParagraphBelowSelectedBlock())) return;
@@ -6443,42 +6193,9 @@ function renderContentBlocks() {
     if (runVisualEditorAction(() => insertParagraphAboveSelectedBlock())) return;
     insertIntoRichSourceModal('\n<p><br></p>\n', hotspot);
   });
-  btnInsertTable.addEventListener('click', () => {
-    const rows = prompt('Rows', '2');
-    if (rows === null) return;
-    const cols = prompt('Columns', '2');
-    if (cols === null) return;
-    if (runVisualEditorAction(() => {
-      const parsedRows = Math.max(1, Math.min(20, Number.parseInt(rows, 10) || 2));
-      const parsedCols = Math.max(1, Math.min(20, Number.parseInt(cols, 10) || 2));
-      const insertedTable = insertTableAtCurrentLine(parsedRows, parsedCols);
-      const firstCell = insertedTable?.querySelector('td,th');
-      if (firstCell instanceof HTMLElement) {
-        firstCell.focus();
-        setSelectedRichTableCell(firstCell);
-      }
-    })) return;
-    insertIntoRichSourceModal(`\n${buildRichTableHtml(rows, cols)}\n`, hotspot);
-  });
-  btnTableAddCol.addEventListener('click', () => {
-    if (runVisualEditorAction(() => addRichTableColumn())) return;
-    updateStatus('Open Visual Editor to edit table columns.');
-    openRichEditorModal(hotspot);
-  });
-  btnTableDelCol.addEventListener('click', () => {
-    if (runVisualEditorAction(() => deleteRichTableColumn())) return;
-    updateStatus('Open Visual Editor to edit table columns.');
-    openRichEditorModal(hotspot);
-  });
-  btnTableAddRow.addEventListener('click', () => {
-    if (runVisualEditorAction(() => addRichTableRow())) return;
-    updateStatus('Open Visual Editor to edit table rows.');
-    openRichEditorModal(hotspot);
-  });
-  btnTableDelRow.addEventListener('click', () => {
-    if (runVisualEditorAction(() => deleteRichTableRow())) return;
-    updateStatus('Open Visual Editor to edit table rows.');
-    openRichEditorModal(hotspot);
+  btnDeleteRow.addEventListener('click', () => {
+    if (runVisualEditorAction(() => deleteCurrentRichParagraph())) return;
+    updateStatus('Open Visual Editor and place the cursor inside the row to delete.');
   });
   btnImageSize.addEventListener('click', () => {
     if (runVisualEditorAction(() => {
@@ -6600,35 +6317,26 @@ function renderContentBlocks() {
   const toolbarRow8 = document.createElement('div');
   toolbarRow8.className = 'inline-actions rich-toolbar-row';
   toolbarRow8.append(
-    btnInsertTwoCols,
     btnInsertCols,
     btnLayoutAddCol,
-    btnLayoutDelCol
+    btnLayoutDelCol,
+    btnLayoutDeleteBlock
   );
 
   const toolbarRow9 = document.createElement('div');
   toolbarRow9.className = 'inline-actions rich-toolbar-row';
   toolbarRow9.append(
-    btnLayoutDelete,
     colsSpaceLabel,
     colsSpaceInput,
+    btnLayoutEqual,
     btnLayoutAbove,
-    btnLayoutBelow
+    btnLayoutBelow,
+    btnDeleteRow
   );
 
   const toolbarRow10 = document.createElement('div');
   toolbarRow10.className = 'inline-actions rich-toolbar-row';
   toolbarRow10.append(
-    btnInsertTable,
-    btnTableAddCol,
-    btnTableDelCol,
-    btnTableAddRow,
-    btnTableDelRow
-  );
-
-  const toolbarRow11 = document.createElement('div');
-  toolbarRow11.className = 'inline-actions rich-toolbar-row';
-  toolbarRow11.append(
     btnImageSize,
     btnClearFormat
   );
@@ -6643,8 +6351,7 @@ function renderContentBlocks() {
     toolbarRow7,
     toolbarRow8,
     toolbarRow9,
-    toolbarRow10,
-    toolbarRow11
+    toolbarRow10
   );
   if (!infoContentEnabled) {
     const hint = document.createElement('div');
@@ -7047,7 +6754,8 @@ function createInfoHotspotAt(coords = null) {
   }
   const infoCount = getSceneInfoHotspots(scene).length + 1;
   const hotspot = createHotspotRecord(`Info ${String(infoCount).padStart(2, '0')}`, [], {
-    richContentHtml: '<p></p>',
+    richContentHtml: '',
+    markerColorKey: DEFAULT_INFO_HOTSPOT_COLOR_KEY,
     infoFrameSize: {
       width: DEFAULT_INFO_FRAME_WIDTH,
       height: DEFAULT_INFO_FRAME_HEIGHT
@@ -7060,7 +6768,10 @@ function createInfoHotspotAt(coords = null) {
       width: window.innerWidth,
       height: window.innerHeight
     },
-    infoFrameAnchorOffset: null,
+    infoFrameAnchorOffset: {
+      offsetX: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X,
+      offsetY: DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y
+    },
     editorVisualStyle: {
       backgroundColorKey: DEFAULT_INFO_BG_COLOR_KEY,
       backgroundTransparency: DEFAULT_INFO_BG_TRANSPARENCY,
@@ -7076,6 +6787,7 @@ function createInfoHotspotAt(coords = null) {
     hotspot.yaw = Number(currentView.yaw) || 0;
     hotspot.pitch = Number(currentView.pitch) || 0;
   }
+  hotspot.infoFramePosition = getDefaultInfoFramePositionFromHotspot(hotspot);
   scene.hotspots.push(hotspot);
   state.selectedHotspotId = hotspot.id;
   // Avoid full render/switchScene here so current yaw/pitch/fov stays unchanged.
@@ -8966,6 +8678,23 @@ infoHotspotSelect?.addEventListener('change', (event) => {
   scheduleMarkerRender();
 });
 
+infoHotspotColorSelect?.addEventListener('change', (event) => {
+  const hotspot = getSelectedInfoHotspot();
+  if (!hotspot) {
+    renderInfoHotspotList();
+    return;
+  }
+  if (!isInfoHotspotInteractionModeActive()) {
+    renderInfoHotspotList();
+    updateStatus('Enable New or Edit to change info hotspot color.');
+    return;
+  }
+  hotspot.markerColorKey = normalizeFloorplanColorKey(event.target.value || DEFAULT_INFO_HOTSPOT_COLOR_KEY);
+  renderInfoHotspotList();
+  scheduleMarkerRender();
+  autosave();
+});
+
 linkSelect.addEventListener('change', (event) => {
   const hotspotId = event.target.value;
   if (!hotspotId) return;
@@ -9101,12 +8830,6 @@ richEditorSurface?.addEventListener('mouseleave', () => {
 richEditorSurface?.addEventListener('click', (event) => {
   const layout = event.target instanceof Element ? findClosestRichLayout(event.target) : null;
   setSelectedRichLayoutElement(layout);
-  const cell = event.target instanceof Element ? event.target.closest('td,th') : null;
-  if (cell && richEditorSurface.contains(cell)) {
-    setSelectedRichTableCell(cell);
-  } else {
-    setSelectedRichTableCell(null);
-  }
   const mediaByTarget = event.target instanceof Element ? event.target.closest('img,video,iframe') : null;
   const mediaByPoint = getRichMediaElementAtPoint(event.clientX, event.clientY);
   const media = mediaByTarget || mediaByPoint;
@@ -9122,7 +8845,6 @@ richEditorSurface?.addEventListener('click', (event) => {
     return;
   }
   setSelectedRichImageElement(null);
-  updateRichTableResizeHandles();
   saveRichEditorSelectionRange();
 });
 richEditorSurface?.addEventListener('paste', (event) => {
@@ -9139,7 +8861,6 @@ richEditorSurface?.addEventListener('input', () => {
   saveRichEditorModalContent({ closeAfterSave: false });
 });
 richEditorSurface?.addEventListener('scroll', () => {
-  updateRichTableResizeHandles();
   updateRichImageResizeHandle();
   updateRichLayoutBlockResizeHandle();
 });
@@ -9168,7 +8889,6 @@ richEditorSurface?.addEventListener('keydown', (event) => {
   }
 });
 window.addEventListener('resize', () => {
-  updateRichTableResizeHandles();
   updateRichImageResizeHandle();
   updateRichLayoutBlockResizeHandle();
   updateRichModalResizeHandle();
