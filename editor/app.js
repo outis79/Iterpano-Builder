@@ -64,6 +64,7 @@ const projectFovInput = null;
 const statusLeft = document.getElementById('status-left');
 const btnAddGroup = document.getElementById('btn-add-group');
 const btnRenameGroup = document.getElementById('btn-rename-group');
+const btnSetMainGroup = document.getElementById('btn-set-main-group');
 const btnDeleteGroup = document.getElementById('btn-delete-group');
 const btnImport = document.getElementById('btn-import');
 const btnSave = document.getElementById('btn-save');
@@ -2894,6 +2895,9 @@ function loadProject(project) {
   project.assets.media = Array.isArray(project.assets.media) ? project.assets.media : [];
 
   const defaultGroupId = project.groups[0].id;
+  project.activeGroupId = project.groups.some((group) => group.id === project.activeGroupId)
+    ? project.activeGroupId
+    : defaultGroupId;
   project.scenes.forEach((scene) => {
     if (!scene.groupId) {
       scene.groupId = defaultGroupId;
@@ -2952,7 +2956,7 @@ function loadProject(project) {
   });
 
   state.project = project;
-  state.selectedGroupId = project.groups[0]?.id || null;
+  state.selectedGroupId = project.activeGroupId || project.groups[0]?.id || null;
   const firstScene =
     getPreferredSceneForGroup(state.selectedGroupId) ||
     project.scenes[0] ||
@@ -3054,10 +3058,10 @@ function compareScenesByUploadId(a, b) {
 
 function sortScenesForList(scenes) {
   const list = [...(scenes || [])];
-  const key = state.sceneSortKey === 'upload' ? 'upload' : 'name';
+  const key = state.sceneSortKey === 'date' ? 'date' : 'name';
   const direction = state.sceneSortDirection === 'desc' ? -1 : 1;
   list.sort((a, b) => {
-    const cmp = key === 'upload' ? compareScenesByUploadId(a, b) : compareScenesByName(a, b);
+    const cmp = key === 'date' ? compareScenesByUploadId(a, b) : compareScenesByName(a, b);
     return cmp * direction;
   });
   return list;
@@ -3090,15 +3094,15 @@ function updateSceneSortButtons() {
       : `Sort by scene ${state.sceneLabelMode === 'alias' ? 'alias' : 'name'}`;
   }
   if (btnSceneSortUpload) {
-    const activeUpload = state.sceneSortKey === 'upload';
-    btnSceneSortUpload.classList.toggle('active', activeUpload);
+    const activeDate = state.sceneSortKey === 'date';
+    btnSceneSortUpload.classList.toggle('active', activeDate);
     const arrow = state.sceneSortDirection === 'asc' ? '↓' : '↑';
-    btnSceneSortUpload.textContent = activeUpload
-      ? `UPLOAD ${arrow}`
-      : 'UPLOAD';
-    btnSceneSortUpload.title = activeUpload
-      ? `Upload order (${state.sceneSortDirection})`
-      : 'Sort by scene internal id';
+    btnSceneSortUpload.textContent = activeDate
+      ? `DATE ${arrow}`
+      : 'DATE';
+    btnSceneSortUpload.title = activeDate
+      ? `Date order (${state.sceneSortDirection})`
+      : 'Sort by scene creation date';
   }
   if (btnSceneLabelMode) {
     const aliasMode = state.sceneLabelMode === 'alias';
@@ -3118,8 +3122,8 @@ function toggleSceneSort(sortKey) {
     state.sceneSortDirection = 'asc';
   }
   renderSceneList();
-  const modeLabel = state.sceneSortKey === 'upload'
-    ? 'upload id'
+  const modeLabel = state.sceneSortKey === 'date'
+    ? 'date'
     : (state.sceneLabelMode === 'alias' ? 'alias' : 'name');
   updateStatus(`Scenes sorted by ${modeLabel} (${state.sceneSortDirection}).`);
 }
@@ -3502,6 +3506,29 @@ function sceneHasGeneratedTiles(scene) {
     !level?.fallbackOnly
   ));
   return hasPaths && hasRenderableLevel;
+}
+
+function countSceneLinksForScene(scene) {
+  if (!scene) return 0;
+  return (scene.hotspots || []).reduce((total, hotspot) => {
+    return total + (hotspot.contentBlocks || []).filter((block) => block.type === 'scene' && block.sceneId).length;
+  }, 0);
+}
+
+function collectStaticExportWarnings(project) {
+  const scenes = Array.isArray(project?.scenes) ? project.scenes : [];
+  const missingTiles = [];
+  const insufficientLinks = [];
+  scenes.forEach((scene) => {
+    if (!sceneHasGeneratedTiles(scene)) {
+      missingTiles.push(scene);
+    }
+    const linkCount = countSceneLinksForScene(scene);
+    if (linkCount < 2) {
+      insufficientLinks.push({ scene, linkCount });
+    }
+  });
+  return { missingTiles, insufficientLinks };
 }
 
 function renderSceneCommentField() {
@@ -3913,11 +3940,14 @@ function renderSceneGroupOptions() {
   groups.forEach((group) => {
     const option = document.createElement('option');
     option.value = group.id;
-    option.textContent = group.name;
+    option.textContent = group.id === state.project?.activeGroupId ? `${group.name} (Main)` : group.name;
     sceneGroupSelect.appendChild(option);
   });
 
   sceneGroupSelect.disabled = groups.length === 0;
+  if (btnSetMainGroup) {
+    btnSetMainGroup.disabled = groups.length === 0 || !state.selectedGroupId;
+  }
   const scene = getSelectedScene();
   if (scene?.groupId) {
     sceneGroupSelect.value = scene.groupId;
@@ -6465,12 +6495,29 @@ function addGroup() {
     mainSceneId: null
   };
   state.project.groups.push(group);
+  if (!state.project.activeGroupId) {
+    state.project.activeGroupId = group.id;
+  }
   state.selectedGroupId = group.id;
   state.selectedSceneId = null;
   state.selectedHotspotId = null;
   state.selectedFloorplanId = getFloorplanForGroup(group.id)?.id || null;
   renderAll();
   updateStatus(`Group "${group.name}" created. Upload a floorplan for this group.`);
+  autosave();
+}
+
+function setSelectedGroupAsMain() {
+  const group = getSelectedGroup();
+  if (!group) {
+    updateStatus('Select a group first.');
+    return;
+  }
+  state.project.activeGroupId = group.id;
+  renderSceneGroupOptions();
+  renderSceneList();
+  renderFloorplans();
+  updateStatus(`Group "${group.name}" set as default group.`);
   autosave();
 }
 
@@ -6554,6 +6601,9 @@ function deleteGroupById(groupId) {
 
   state.project.minimap.floorplans = (state.project.minimap.floorplans || []).filter((fp) => fp.groupId !== group.id);
   state.project.groups = groups.filter((item) => item.id !== group.id);
+  if (state.project.activeGroupId === group.id) {
+    state.project.activeGroupId = fallback.id;
+  }
   ensureMainSceneForGroup(fallback.id);
 
   state.selectedGroupId = fallback.id;
@@ -7317,6 +7367,29 @@ function exportProject() {
 
 async function exportStaticPackage() {
   if (!state.project) return;
+  const warnings = collectStaticExportWarnings(state.project);
+  if (warnings.missingTiles.length || warnings.insufficientLinks.length) {
+    const lines = ['Static export warnings:', ''];
+    if (warnings.missingTiles.length) {
+      lines.push('Scenes without tiles:');
+      warnings.missingTiles.forEach((scene) => {
+        lines.push(`- ${scene.name || scene.id}`);
+      });
+      lines.push('');
+    }
+    if (warnings.insufficientLinks.length) {
+      lines.push('Scenes with fewer than 2 scene links:');
+      warnings.insufficientLinks.forEach(({ scene, linkCount }) => {
+        lines.push(`- ${scene.name || scene.id} (${linkCount} link${linkCount === 1 ? '' : 's'})`);
+      });
+      lines.push('');
+    }
+    lines.push('Continue with static export?');
+    if (!window.confirm(lines.join('\n'))) {
+      updateStatus('Static export cancelled.');
+      return;
+    }
+  }
   const project = JSON.parse(JSON.stringify(state.project));
 
   const assetDownloads = [];
@@ -8572,6 +8645,7 @@ function samplePixel(sourceData, sourceWidth, x, y) {
 document.getElementById('btn-delete-all-scenes').addEventListener('click', deleteAllScenes);
 btnAddGroup.addEventListener('click', addGroup);
 btnRenameGroup.addEventListener('click', renameSelectedGroup);
+btnSetMainGroup?.addEventListener('click', setSelectedGroupAsMain);
 btnDeleteGroup.addEventListener('click', deleteGroup);
 btnAddHotspot?.addEventListener('click', toggleInfoHotspotCreateMode);
 btnDeleteHotspot?.addEventListener('click', deleteHotspot);
@@ -8780,7 +8854,7 @@ btnToggleScenesPanel?.addEventListener('click', () => {
   toggleSection(btnToggleScenesPanel, scenesPanelBody);
 });
 btnSceneSortName?.addEventListener('click', () => toggleSceneSort('name'));
-btnSceneSortUpload?.addEventListener('click', () => toggleSceneSort('upload'));
+btnSceneSortUpload?.addEventListener('click', () => toggleSceneSort('date'));
 btnSceneLabelMode?.addEventListener('click', toggleSceneLabelMode);
 btnToggleMapPanel?.addEventListener('click', () => {
   if (floorplanMapWindowOpen) {

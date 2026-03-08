@@ -12,6 +12,7 @@ There are no build tools, backend services, or package manager requirements. Eve
 The project is operational and currently includes:
 - scene group management
 - unique group-name validation on create/rename
+- project-level main group selection (`Set Main` in `Groups`)
 - per-group main scene selection
 - panorama upload and scene creation
 - project-level hard reset (`Reset Project` with typed confirmation: `reset`)
@@ -28,8 +29,9 @@ The project is operational and currently includes:
 - local autosave with IndexedDB
 - project JSON export
 - static package export (ZIP or folder write)
+- static export preflight warning for scenes without tiles or with fewer than 2 scene links
 - collapsible `Scene Actions` panel in right column (before `Map`)
-- scene list sorting controls (`A/Z`, `UPLOAD`) with asc/desc toggle
+- scene list sorting controls (`A/Z`, `DATE`) with asc/desc toggle
 - scene alias mode in list (`Alias ON/OFF`) with inline double-click editing
 - per-scene comment field in `Scene Actions`
 - keyboard scene navigation in list (`ArrowUp` / `ArrowDown`)
@@ -45,8 +47,9 @@ Verified synchronization points between `editor` and `viewer`:
 - scene alias is used consistently by editor/viewer for `Go to ...` link labels
 - per-group floorplan nodes are exported with per-node `colorKey` (fallback: floorplan `markerColorKey`) and rendered in viewer
 - group `mainSceneId` from editor is now respected by viewer on initial load and when switching group
+- project `activeGroupId` from editor is now respected by viewer on initial load
 
-Practical implication: if a tour behaves correctly in editor and you export a static package, the exported viewer now follows the same group/scene entry logic.
+Practical implication: if a tour behaves correctly in editor and you export a static package, the exported viewer now follows the same main-group/main-scene entry logic.
 
 ## Repository Structure
 - `editor/index.html`: editor UI
@@ -60,7 +63,6 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `shared/sample-tour.json`: blank default project template loaded by editor and viewer
 - `shared/tour.schema.json`: JSON schema for the project format
 - `shared/themes.json`: available theme variables (currently not applied by runtime code)
-- `_tmp_marzipano.js`: local Marzipano copy (not directly referenced by the pages)
 
 ## Requirements
 - modern desktop/mobile browser
@@ -89,8 +91,9 @@ Then open:
    - `Edit`: drag/delete points, change selected point color
    - `Select All` (in edit mode): bulk select all points for delete/color apply
 8. (Optional) Set the group entry scene with `Set Main Scene`.
-9. (Optional) Use `Reset Project` from `Project` panel to clear all scenes/tiles/hotspots/maps/assets (requires typing `reset`).
-10. Export:
+9. (Optional) Set the default opening group with `Set Main` in `Groups`.
+10. (Optional) Use `Reset Project` from `Project` panel to clear all scenes/tiles/hotspots/maps/assets (requires typing `reset`).
+11. Export:
    - `Export Project JSON` for backup/project exchange
    - `Export Static Package` for deployable output
 
@@ -101,6 +104,7 @@ Each project includes:
 - `project`: metadata (name, version, timestamps)
 - `settings`: viewer options
 - `groups`: scene grouping and per-group main scene
+- `activeGroupId`: default group opened by editor/viewer
 - `scenes`: scene metadata, initial view, hotspots, source or tile references
 - `assets`: media library
 - `minimap.floorplans`: per-group floorplan with scene nodes
@@ -133,6 +137,7 @@ viewer/tiles/<scene-id>/0/<face>/<y>/<x>.jpg
 Operational notes:
 - Generated tiles stay in memory until static export is executed.
 - Export converts `dataUrl` assets into real files and rewrites JSON paths.
+- Static export warns before continuing if any scene has no tiles or has fewer than 2 scene links.
 - In editor UI, scene-wide actions are grouped in the right panel under `Scene Actions`.
 - Group-level image actions are in the left `Groups` panel (`Upload Img`, `Delete All Img`).
 - Map maximize is constrained to a floating area over the panorama (full height, about 1/3 width).

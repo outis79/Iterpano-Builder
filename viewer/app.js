@@ -27,6 +27,7 @@ const fallbackProject = {
     }
   ],
   assets: { media: [] },
+  activeGroupId: 'group-default',
   groups: [{ id: 'group-default', name: 'Default' }],
   minimap: { floorplans: [] }
 };

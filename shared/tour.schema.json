@@ -24,6 +24,7 @@
         "vrEnabled": { "type": "boolean" }
       }
     },
+    "activeGroupId": { "type": ["string", "null"] },
     "scenes": {
       "type": "array",
       "items": {

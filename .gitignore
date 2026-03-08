@@ -10,3 +10,8 @@ viewer/icons/
 
 # Local temp
 *.tmp
+_tmp_*
+
+# OS noise
+Thumbs.db
+.DS_Store
