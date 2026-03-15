@@ -122,17 +122,17 @@ body.vr-mode .pano-vr {
   box-shadow: none;
 }
 
-.home-page-body {
-  flex: 1 1 auto;
-  padding: 18px 22px 24px;
-  overflow: auto;
-}
-
-.home-page-actions {
+.home-page-header {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  padding: 14px 16px 0;
+  flex: 0 0 auto;
+}
+
+.home-page-body {
+  flex: 1 1 auto;
+  padding: 14px 22px 24px;
+  overflow: auto;
 }
 
 .home-page-block {

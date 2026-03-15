@@ -828,6 +828,26 @@ function toggleHomePageOverlay() {
   renderHomePage(projectData);
 }
 
+function startTourFromHomePage() {
+  if (!projectData) {
+    closeHomePageOverlay();
+    return;
+  }
+  const mainGroupId = projectData.activeGroupId || projectData.groups?.[0]?.id || null;
+  if (mainGroupId) {
+    activeGroupId = mainGroupId;
+    renderGroupList();
+    renderFloorplan();
+  }
+  const targetScene = getPreferredSceneForGroup(activeGroupId) || scenes[0] || null;
+  closeHomePageOverlay();
+  if (targetScene) {
+    switchScene(targetScene, { syncGroup: true });
+  } else {
+    renderSceneList();
+  }
+}
+
 function openModal(hotspot) {
   modalTitle.textContent = hotspot.title || 'Hotspot';
   modalBody.innerHTML = '';
@@ -1703,7 +1723,7 @@ groupSelect?.addEventListener('change', () => {
 });
 
 document.getElementById('btn-close-modal').addEventListener('click', closeModal);
-btnHomePageStart?.addEventListener('click', closeHomePageOverlay);
+btnHomePageStart?.addEventListener('click', startTourFromHomePage);
 btnHomeToggle?.addEventListener('click', toggleHomePageOverlay);
 window.addEventListener('resize', () => {
   if (homePageVisible) {

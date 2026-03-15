@@ -700,6 +700,16 @@ textarea:disabled {
   display: none;
 }
 
+.hotspot-modal.home-page-preview-mode .preview-start-tour {
+  pointer-events: auto;
+  margin-right: 8px;
+  margin-top: 5px;
+}
+
+.preview-start-tour.hidden {
+  display: none !important;
+}
+
 .hotspot-modal.home-page-preview-mode #btn-close-preview {
   pointer-events: auto;
 }
@@ -1308,14 +1318,14 @@ textarea:disabled {
 
 .floorplan-canvas {
   position: relative;
-  width: calc(100% * var(--floorplan-zoom, 1));
-  height: calc(100% * var(--floorplan-zoom, 1));
+  width: 100%;
+  min-width: 100%;
 }
 
 .floorplan-image {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: fill;
   display: block;
 }
 

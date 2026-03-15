@@ -19,6 +19,7 @@
       <button class="btn ghost" id="btn-import">Import Project</button>
       <button class="btn ghost" id="btn-save">Save Draft</button>
       <button class="btn ghost" id="btn-export">Export Project JSON</button>
+      <button class="btn ghost" id="btn-export-package">Export Project Package ZIP</button>
       <button class="btn primary" id="btn-export-static">Export Static Package</button>
     </div>
   </header>
@@ -258,6 +259,7 @@
     <div class="modal-content" id="preview-modal-content">
       <div class="modal-header">
         <div class="modal-title" id="preview-modal-title">Hotspot</div>
+        <button class="btn ghost preview-start-tour hidden" id="btn-home-page-preview-start" type="button">Start Tour</button>
         <button class="btn ghost modal-close-x" id="btn-close-preview" aria-label="Close popup">&times;</button>
       </div>
       <div class="modal-body" id="preview-modal-body"></div>
@@ -336,7 +338,7 @@
   </div>
 
 
-  <input type="file" id="file-import" accept="application/json" hidden>
+  <input type="file" id="file-import" accept=".json,.zip,application/json,application/zip" hidden>
   <input type="file" id="file-floorplan" accept="image/*" hidden>
   <input type="file" id="file-panorama" accept="image/*" multiple hidden>
 

@@ -30,6 +30,7 @@ The project is operational and currently includes:
 - Home Page uses fullscreen viewer overlay and a dedicated editor mode (editor keeps right tools panel accessible)
 - local autosave with IndexedDB
 - project JSON export
+- project package ZIP export/import (complete editor backup with `project.json` + generated `tiles/`)
 - static package export (ZIP or folder write)
 - static export preflight warning for scenes without tiles or with fewer than 2 scene links
 - collapsible `Scene Actions` panel in right column (before `Map`)
@@ -103,9 +104,15 @@ Then open:
 11. (Optional) Use `Reset Project` from `Project` panel to clear all scenes/tiles/hotspots/maps/assets (requires typing `reset`).
 12. Export:
    - `Export Project JSON` for backup/project exchange
+   - `Export Project Package ZIP` for complete reimportable editor backup
    - `Export Static Package` for deployable output
 
 To validate final output, open the exported package `viewer/index.html`.
+
+Import options:
+- `Import Project` accepts:
+  - `.json` project files
+  - `.zip` project package files exported by this builder
 
 ## Project Format (Summary)
 Each project includes:
@@ -150,6 +157,28 @@ Operational notes:
 - In editor UI, scene-wide actions are grouped in the right panel under `Scene Actions`.
 - Group-level image actions are in the left `Groups` panel (`Upload Img`, `Delete All Img`).
 - Map maximize is constrained to a floating area over the panorama (full height, about 1/3 width).
+
+## Project Package ZIP
+`Export Project Package ZIP` creates a reimportable editor package intended for backup/restore of authoring work.
+
+Current package structure:
+
+```text
+project.json
+tiles/<scene-id>/preview.jpg
+tiles/<scene-id>/0/<face>/<y>/<x>.jpg
+```
+
+Behavior:
+- `project.json` stores the editor project model
+- generated tiles are included as real files under `tiles/`
+- source panoramas, floorplans, and rich-content media currently remain embedded in `project.json`
+- `Import Project` can reopen this ZIP directly
+
+Practical difference vs other export options:
+- `Export Project JSON` -> lightweight editor data only
+- `Export Project Package ZIP` -> editor data + generated tiles, reimportable
+- `Export Static Package` -> deployable viewer output
 
 ## Deployment (GitHub Pages or Static Hosting)
 1. Generate the static package from the editor.
