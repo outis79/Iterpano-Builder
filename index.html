@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>360 Virtual Tour</title>
+  <style>
+    :root {
+      --bg: #0b1424;
+      --card: #111f35;
+      --line: #2b3d5f;
+      --txt: #f4f7ff;
+      --muted: #9ab0d4;
+      --btn: #1b2f4f;
+      --btnh: #27466f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #162744 0%, var(--bg) 60%);
+      color: var(--txt);
+      font-family: "Segoe UI", Arial, sans-serif;
+      padding: 20px;
+    }
+    .card {
+      width: min(560px, 100%);
+      background: linear-gradient(180deg, #14223a 0%, var(--card) 100%);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    a {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 42px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--txt);
+      text-decoration: none;
+      background: var(--btn);
+      transition: background .15s ease;
+    }
+    a:hover { background: var(--btnh); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>360 Virtual Tour</h1>
+    <p>Seleziona una destinazione:</p>
+    <div class="actions">
+      <a href="./editor/index.html">Apri Editor</a>
+      <a href="./viewer/index.html">Apri Viewer</a>
+    </div>
+  </main>
+</body>
+</html>
