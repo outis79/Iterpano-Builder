@@ -24,6 +24,7 @@ The project is operational and currently includes:
 - per-scene map point colors (including bulk color apply with `Select All`)
 - detailed group deletion warning with cascade impact summary
 - scene-link hotspots
+- scene-link hotspots with exported custom hover tooltip (`Go to <scene alias>`)
 - informational hotspots with rich-content editor
 - informational hotspot marker color selection preserved in static export
 - hotspot rich content supports text, images, local/embedded video, links, and column layouts
@@ -49,6 +50,7 @@ Verified synchronization points between `editor` and `viewer`:
 - static export always bundles current viewer runtime files (`viewer/index.html`, `viewer/app.js`, `viewer/styles.css`, `viewer/vendor/*`)
 - scene-link hotspots (`contentBlocks.type = scene`) are resolved in viewer and switch scene correctly
 - scene alias is used consistently by editor/viewer for `Go to ...` link labels
+- exported scene-link tooltip uses the target scene alias (`Go to <alias>`) instead of the link code/title
 - scene alias is used by the exported viewer scene list and floorplan node titles
 - per-group floorplan nodes are exported with per-node `colorKey` (fallback: floorplan `markerColorKey`) and rendered in viewer
 - group `mainSceneId` from editor is now respected by viewer on initial load and when switching group
@@ -56,6 +58,7 @@ Verified synchronization points between `editor` and `viewer`:
 - project `homePage` from editor is now rendered by viewer before entering the tour
 - viewer header includes a `Home` toggle to reopen/close the Home Page after the tour has started
 - exported viewer info hotspots preserve editor marker colors
+- exported viewer closes open info modals automatically when scene changes
 
 Practical implication: if a tour behaves correctly in editor and you export a static package, the exported viewer follows the same main-group/main-scene entry logic and can show the configured Home Page first.
 

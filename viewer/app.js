@@ -38,6 +38,7 @@ const modal = document.getElementById('hotspot-modal');
 const modalContent = modal?.querySelector('.modal-content');
 const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body');
+const sceneLinkTooltip = document.getElementById('scene-link-tooltip');
 const btnHomeToggle = document.getElementById('btn-home-toggle');
 const btnGyro = document.getElementById('btn-gyro');
 const btnReset = document.getElementById('btn-reset-orientation');
@@ -62,6 +63,7 @@ let activeInfoHotspot = null;
 let activeInfoHotspotElement = null;
 let activeInfoHotspotAnchorOffset = null;
 let infoModalDragState = null;
+let activeSceneLinkTooltipElement = null;
 
 const FLOORPLAN_COLOR_MAP = {
   yellow: '#f0c84b',
@@ -1516,17 +1518,65 @@ function getHotspotSceneTargetRuntime(hotspot) {
   return findSceneRuntimeById(sceneBlock.sceneId);
 }
 
+function getHotspotSceneTargetData(hotspot) {
+  const sceneBlock = (hotspot?.contentBlocks || []).find(
+    (block) => block.type === 'scene' && block.sceneId
+  );
+  if (!sceneBlock) return null;
+  return (projectData?.scenes || []).find((scene) => scene.id === sceneBlock.sceneId) || null;
+}
+
+function getSceneLinkHoverLabel(hotspot, targetScene = null) {
+  const runtimeTarget = targetScene || getHotspotSceneTargetRuntime(hotspot);
+  const dataTarget = runtimeTarget?.data || getHotspotSceneTargetData(hotspot);
+  if (!dataTarget) return hotspot?.title || 'Hotspot';
+  const targetName = String(dataTarget.alias || '').trim() || dataTarget.name || 'Scene';
+  return `Go to ${targetName}`;
+}
+
+function hideSceneLinkTooltip() {
+  activeSceneLinkTooltipElement = null;
+  if (!sceneLinkTooltip) return;
+  sceneLinkTooltip.classList.add('hidden');
+  sceneLinkTooltip.setAttribute('aria-hidden', 'true');
+}
+
+function positionSceneLinkTooltip(targetElement) {
+  if (!sceneLinkTooltip || !targetElement) return;
+  const rect = targetElement.getBoundingClientRect();
+  sceneLinkTooltip.style.left = `${rect.left + rect.width / 2}px`;
+  sceneLinkTooltip.style.top = `${rect.top}px`;
+}
+
+function showSceneLinkTooltip(targetElement, text) {
+  if (!sceneLinkTooltip || !targetElement || !text) return;
+  activeSceneLinkTooltipElement = targetElement;
+  sceneLinkTooltip.textContent = text;
+  sceneLinkTooltip.classList.remove('hidden');
+  sceneLinkTooltip.setAttribute('aria-hidden', 'false');
+  positionSceneLinkTooltip(targetElement);
+}
+
 function createHotspotElement(hotspot) {
   const wrapper = document.createElement('div');
   wrapper.className = 'hotspot';
   wrapper.setAttribute('aria-label', hotspot.title || 'Hotspot');
   const isSceneLink = Boolean((hotspot.contentBlocks || []).some((block) => block.type === 'scene'));
   if (isSceneLink) {
+    const targetScene = getHotspotSceneTargetRuntime(hotspot);
     wrapper.classList.add('hotspot-link', 'hotspot-default');
     const linkColor = FLOORPLAN_COLOR_MAP[normalizeFloorplanColorKey(hotspot.linkColorKey || 'yellow')];
     wrapper.style.setProperty('--scene-link-color', linkColor);
     wrapper.style.setProperty('--scene-link-border', darkenHex(linkColor, 0.24));
     wrapper.style.setProperty('--scene-link-ring', withAlpha(linkColor, 0.35));
+    wrapper.setAttribute('aria-label', getSceneLinkHoverLabel(hotspot, targetScene));
+    wrapper.addEventListener('mouseenter', () => {
+      showSceneLinkTooltip(wrapper, getSceneLinkHoverLabel(hotspot, targetScene));
+    });
+    wrapper.addEventListener('mousemove', () => {
+      positionSceneLinkTooltip(wrapper);
+    });
+    wrapper.addEventListener('mouseleave', hideSceneLinkTooltip);
   } else {
     const infoColor = FLOORPLAN_COLOR_MAP[normalizeFloorplanColorKey(hotspot.markerColorKey || 'yellow')];
     wrapper.style.setProperty('--info-hotspot-color', withAlpha(infoColor, 0.9));
@@ -1544,6 +1594,7 @@ function createHotspotElement(hotspot) {
   applyDefaultStyle();
 
   wrapper.addEventListener('click', () => {
+    hideSceneLinkTooltip();
     const targetScene = getHotspotSceneTargetRuntime(hotspot);
     if (targetScene) {
       switchScene(targetScene, { syncGroup: true });
@@ -1766,6 +1817,10 @@ function renderSceneList() {
 
 function switchScene(scene, options = {}) {
   if (!scene) return;
+  hideSceneLinkTooltip();
+  if (modal?.classList.contains('visible')) {
+    closeModal();
+  }
   const syncGroup = options.syncGroup !== false;
   currentScene = scene;
 
@@ -1998,6 +2053,9 @@ btnHomePageStart?.addEventListener('click', startTourFromHomePage);
 btnHomeToggle?.addEventListener('click', toggleHomePageOverlay);
 updateFloorplanExpandButton();
 window.addEventListener('resize', () => {
+  if (activeSceneLinkTooltipElement) {
+    positionSceneLinkTooltip(activeSceneLinkTooltipElement);
+  }
   if (homePageVisible) {
     applyHomePageFrame(projectData);
   }

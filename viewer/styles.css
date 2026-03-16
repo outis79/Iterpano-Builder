@@ -686,6 +686,26 @@ body.vr-mode .home-page-overlay {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
 }
 
+.scene-link-tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  transform: translate(-50%, calc(-100% - 10px));
+}
+
+.scene-link-tooltip.hidden {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .viewer-shell {
     grid-template-columns: 1fr;
