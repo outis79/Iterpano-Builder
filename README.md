@@ -163,13 +163,13 @@ viewer/media/*
 viewer/floorplans/*
 viewer/tiles/<scene-id>/preview.jpg
 viewer/tiles/<scene-id>/0/<face>/<y>/<x>.jpg
-<project-name>-static.json
 ```
 
 Operational notes:
-- Generated tiles stay in memory until static export is executed.
+- Generated tiles are exported only if they are available in the current editor session (or restored from a previously imported Project Package ZIP).
 - Export converts `dataUrl` assets into real files and rewrites JSON paths.
 - Export also generates a root `index.html` that redirects to `viewer/index.html`, useful for GitHub Pages.
+- Static export no longer emits an extra root `*-static.json` file.
 - Static export warns before continuing if any scene has no tiles or has fewer than 2 scene links.
 - In editor UI, scene-wide actions are grouped in the right panel under `Scene Actions`.
 - Group-level image actions are in the left `Groups` panel (`Upload Img`, `Delete All Img`).
