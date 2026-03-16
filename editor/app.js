@@ -8374,7 +8374,7 @@ async function exportStaticPackage() {
   }
 
   // Fallback: multiple downloads with flattened names.
-  downloadBlob(jsonBlob, `${project.project.name || 'tour-project'}-static.json`);
+  downloadBlob(jsonBlob, 'shared_sample-tour.json');
   runtimeFiles.forEach((file) => downloadBlob(file.blob, file.path.replace(/\//g, '_')));
   assetDownloads.forEach((file) => downloadBlob(file.blob, file.outputPath.replace(/\//g, '_')));
   tileDownloads.forEach((file) => downloadBlob(file.blob, file.outputPath.replace(/\//g, '_')));
@@ -8416,7 +8416,6 @@ function downloadBlob(blob, filename) {
 async function exportZipPackage(project, jsonBlob, assets, tiles, runtimeFiles) {
   const zip = new JSZip();
   zip.file('index.html', buildStaticPackageRootIndexHtml());
-  zip.file(`${project.project.name || 'tour-project'}-static.json`, await blobToString(jsonBlob));
   zip.file('shared/sample-tour.json', await blobToString(jsonBlob));
 
   runtimeFiles.forEach((file) => {
@@ -8463,7 +8462,6 @@ async function exportWithFileSystemAccess(project, jsonBlob, assets, tiles, runt
     const root = await window.showDirectoryPicker();
 
     await writeFile(root, 'index.html', new Blob([buildStaticPackageRootIndexHtml()], { type: 'text/html' }));
-    await writeFile(root, `${project.project.name || 'tour-project'}-static.json`, jsonBlob);
     const sharedDir = await root.getDirectoryHandle('shared', { create: true });
     await writeFile(sharedDir, 'sample-tour.json', jsonBlob);
 
