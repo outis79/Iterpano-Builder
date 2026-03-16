@@ -16,6 +16,8 @@ const fallbackProject = {
 };
 
 const panoElement = document.getElementById('pano');
+const viewerHeader = document.querySelector('.viewer-header');
+const licenseFooter = document.querySelector('.license-footer');
 const panoLeft = document.getElementById('pano-left');
 const panoRight = document.getElementById('pano-right');
 const sceneList = document.getElementById('scene-list');
@@ -113,6 +115,55 @@ function normalizeInfoHotspotDisplayMode(value) {
 
 function isMobileViewerLayout() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+}
+
+function syncViewerViewportMetrics() {
+  const viewportHeight = Math.max(320, Math.round(window.innerHeight || document.documentElement.clientHeight || 0));
+  document.documentElement.style.setProperty('--viewer-app-height', `${viewportHeight}px`);
+  const headerHeight = Math.round(viewerHeader?.getBoundingClientRect().height || 0);
+  const footerHeight = Math.round(licenseFooter?.getBoundingClientRect().height || 0);
+  document.documentElement.style.setProperty('--viewer-header-height', `${headerHeight}px`);
+  document.documentElement.style.setProperty('--viewer-footer-height', `${footerHeight}px`);
+  const panoHeight = Math.max(220, viewportHeight - headerHeight - footerHeight);
+  document.documentElement.style.setProperty('--viewer-mobile-pano-height', `${panoHeight}px`);
+}
+
+function refreshViewerLayout() {
+  syncViewerViewportMetrics();
+  const rect = panoElement?.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect?.width || panoElement?.clientWidth || 0));
+  const height = Math.max(1, Math.round(rect?.height || panoElement?.clientHeight || 0));
+  if (width > 0 && height > 0) {
+    scenes.forEach((scene) => {
+      try { scene.view?.setSize?.({ width, height }); } catch {}
+    });
+    if (typeof viewer?.updateSize === 'function') {
+      try { viewer.updateSize(); } catch {}
+    }
+  }
+
+  const leftRect = panoLeft?.getBoundingClientRect();
+  const rightRect = panoRight?.getBoundingClientRect();
+  const leftWidth = Math.max(1, Math.round(leftRect?.width || panoLeft?.clientWidth || 0));
+  const leftHeight = Math.max(1, Math.round(leftRect?.height || panoLeft?.clientHeight || 0));
+  const rightWidth = Math.max(1, Math.round(rightRect?.width || panoRight?.clientWidth || 0));
+  const rightHeight = Math.max(1, Math.round(rightRect?.height || panoRight?.clientHeight || 0));
+  if (leftWidth > 0 && leftHeight > 0) {
+    vrViewers?.leftScenes?.forEach((scene) => {
+      try { scene.view?.setSize?.({ width: leftWidth, height: leftHeight }); } catch {}
+    });
+    if (typeof vrViewers?.leftViewer?.updateSize === 'function') {
+      try { vrViewers.leftViewer.updateSize(); } catch {}
+    }
+  }
+  if (rightWidth > 0 && rightHeight > 0) {
+    vrViewers?.rightScenes?.forEach((scene) => {
+      try { scene.view?.setSize?.({ width: rightWidth, height: rightHeight }); } catch {}
+    });
+    if (typeof vrViewers?.rightViewer?.updateSize === 'function') {
+      try { vrViewers.rightViewer.updateSize(); } catch {}
+    }
+  }
 }
 
 function getMobileInfoFrameClamp() {
@@ -1053,6 +1104,7 @@ function closeHomePageOverlay() {
   homePageFrame.style.removeProperty('top');
   homePageFrame.style.removeProperty('background-color');
   updateHomePageToggleButton(projectData);
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function applyHomePageFrame(project = projectData) {
@@ -1083,6 +1135,7 @@ function renderHomePage(project = projectData) {
   trimTrailingEmptyParagraphs(homePageBody);
   resolveRichMediaReferencesInContainer(homePageBody, project, { preferDataUrl: false });
   homePageVisible = true;
+  closeMobilePanel();
   homePageOverlay.classList.remove('hidden');
   homePageOverlay.setAttribute('aria-hidden', 'false');
   if (btnHomePageStart) {
@@ -1090,6 +1143,7 @@ function renderHomePage(project = projectData) {
   }
   applyHomePageFrame(project);
   updateHomePageToggleButton(project);
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function toggleHomePageOverlay() {
@@ -1474,6 +1528,7 @@ function buildViewer(project) {
     renderSceneList();
   }
   renderHomePage(project);
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function buildVrViewers(project) {
@@ -1825,18 +1880,21 @@ function updateMobilePanelUi() {
 function closeMobilePanel() {
   mobilePanelMode = null;
   updateMobilePanelUi();
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function openMobilePanel(mode) {
   if (!isMobileViewerLayout()) return;
   mobilePanelMode = mode === 'map' ? 'map' : 'scenes';
   updateMobilePanelUi();
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function toggleMobilePanel(mode) {
   if (!isMobileViewerLayout()) return;
   mobilePanelMode = mobilePanelMode === mode ? null : mode;
   updateMobilePanelUi();
+  requestAnimationFrame(refreshViewerLayout);
 }
 
 function setFloorplanExpanded(next) {
@@ -1905,7 +1963,14 @@ function renderFloorplanMarkers() {
     marker.style.setProperty('--floorplan-marker-color', markerColor);
     marker.style.setProperty('--floorplan-marker-border', markerBorder);
     marker.style.setProperty('--floorplan-marker-ring', markerRing);
+    marker.style.touchAction = 'manipulation';
     marker.addEventListener('click', () => switchScene(targetScene, { syncGroup: false }));
+    marker.addEventListener('pointerup', (event) => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+        event.preventDefault();
+        switchScene(targetScene, { syncGroup: false });
+      }
+    });
     floorplanMarkers.appendChild(marker);
   });
 
@@ -2224,12 +2289,14 @@ btnHomePageStart?.addEventListener('click', startTourFromHomePage);
 btnHomeToggle?.addEventListener('click', toggleHomePageOverlay);
 updateFloorplanExpandButton();
 updateMobilePanelUi();
+refreshViewerLayout();
 window.addEventListener('resize', () => {
   if (!isMobileViewerLayout()) {
     closeMobilePanel();
   } else {
     updateMobilePanelUi();
   }
+  refreshViewerLayout();
   if (activeSceneLinkTooltipElement) {
     positionSceneLinkTooltip(activeSceneLinkTooltipElement);
   }
@@ -2239,4 +2306,7 @@ window.addEventListener('resize', () => {
   if (modal?.classList.contains('visible') && activeInfoHotspot) {
     applyInfoModalFrameSize(activeInfoHotspot);
   }
+});
+window.addEventListener('orientationchange', () => {
+  setTimeout(refreshViewerLayout, 80);
 });
