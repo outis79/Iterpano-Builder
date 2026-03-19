@@ -257,6 +257,12 @@ body.vr-mode .home-page-overlay {
   min-height: 120px;
   display: block;
   overflow: auto;
+  cursor: grab;
+}
+
+.floorplan-wrap.dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .floorplan-panel.maximized {
@@ -282,6 +288,7 @@ body.vr-mode .home-page-overlay {
 .floorplan-stage {
   position: relative;
   width: calc(100% * var(--floorplan-zoom, 1));
+  margin: 0 auto;
 }
 
 .floorplan-image {
@@ -342,12 +349,22 @@ body.vr-mode .home-page-overlay {
 }
 
 body.viewer-fullscreen .viewer-header,
-body.viewer-fullscreen .license-footer {
+body.viewer-fullscreen .license-footer,
+body.viewer-pseudo-fullscreen .viewer-header,
+body.viewer-pseudo-fullscreen .license-footer {
   display: none;
 }
 
-body.viewer-fullscreen .viewer-shell {
+body.viewer-fullscreen .viewer-shell,
+body.viewer-pseudo-fullscreen .viewer-shell {
   min-height: 100vh;
+}
+
+body.viewer-pseudo-fullscreen .viewer-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
 }
 
 .hotspot-modal {
@@ -842,13 +859,11 @@ body.viewer-fullscreen .viewer-shell {
   }
 
   body.mobile-panel-map .side-panel .panel-section.floorplan-panel {
-    display: block;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
     margin-top: 0;
-  }
-
-  body.mobile-panel-map .side-panel .panel-section.floorplan-panel .floorplan-wrap {
-    min-height: calc(var(--viewer-app-height, 100vh) - var(--viewer-header-height, 56px) - 96px);
-    max-height: calc(var(--viewer-app-height, 100vh) - var(--viewer-header-height, 56px) - 96px);
   }
 
   body.mobile-panel-groups .side-panel,
@@ -860,16 +875,61 @@ body.viewer-fullscreen .viewer-shell {
     right: 0;
     max-height: none;
     border-radius: 0;
-    padding: 12px;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
     z-index: 55;
   }
 
+  body.mobile-panel-map .side-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
   body.mobile-panel-map .mobile-panel-head {
-    margin-bottom: 8px;
+    display: none;
   }
 
   body.mobile-panel-map .side-panel .floorplan-tools {
-    flex-wrap: wrap;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin: 0;
+  }
+
+  body.mobile-panel-map #btn-floorplan-zoom-out,
+  body.mobile-panel-map #btn-floorplan-zoom-in,
+  body.mobile-panel-map #btn-floorplan-expand,
+  body.mobile-panel-map #floorplan-zoom-value {
+    display: none;
+  }
+
+  body.mobile-panel-map #btn-floorplan-zoom-reset,
+  body.mobile-panel-map #btn-floorplan-mobile-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 74px;
+    min-height: 38px;
+    padding: 6px 10px;
+    background: rgba(20, 26, 34, 0.9);
+    backdrop-filter: blur(6px);
+  }
+
+  body.mobile-panel-map .side-panel .panel-section.floorplan-panel .floorplan-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    touch-action: none;
+  }
+
+  body.mobile-panel-map .side-panel .panel-section.floorplan-panel .floorplan-stage {
+    min-height: 100%;
   }
 
   .mobile-panel-backdrop {

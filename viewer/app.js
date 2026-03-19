@@ -29,10 +29,12 @@ const floorplanImage = document.getElementById('floorplan-image');
 const floorplanMarkers = document.getElementById('floorplan-markers');
 const floorplanEmpty = document.getElementById('floorplan-empty');
 const floorplanPanel = document.getElementById('floorplan-panel');
+const floorplanWrap = floorplanPanel?.querySelector('.floorplan-wrap');
 const btnFloorplanZoomOut = document.getElementById('btn-floorplan-zoom-out');
 const btnFloorplanZoomIn = document.getElementById('btn-floorplan-zoom-in');
 const btnFloorplanZoomReset = document.getElementById('btn-floorplan-zoom-reset');
 const btnFloorplanExpand = document.getElementById('btn-floorplan-expand');
+const btnFloorplanMobileClose = document.getElementById('btn-floorplan-mobile-close');
 const floorplanZoomValue = document.getElementById('floorplan-zoom-value');
 const btnMobileGroups = document.getElementById('btn-mobile-groups');
 const btnMobileScenes = document.getElementById('btn-mobile-scenes');
@@ -72,6 +74,8 @@ let floorplansByGroup = new Map();
 let floorplanZoomByGroup = new Map();
 let homePageVisible = false;
 let floorplanExpanded = false;
+let floorplanPanState = null;
+let floorplanTouchState = null;
 let activeInfoHotspot = null;
 let activeInfoHotspotElement = null;
 let activeInfoHotspotAnchorOffset = null;
@@ -84,6 +88,7 @@ let quickInfoCloseTimer = null;
 let quickInfoModalHover = false;
 let mobilePanelMode = null;
 let orientationLocked = false;
+let pseudoFullscreenActive = false;
 
 const FLOORPLAN_COLOR_MAP = {
   yellow: '#f0c84b',
@@ -142,8 +147,32 @@ function updateOrientationLockUi() {
   }
 }
 
+function isIPhoneSafari() {
+  const ua = navigator.userAgent || '';
+  const isIPhone = /iPhone|iPod/i.test(ua);
+  const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
+  return isIPhone && isSafari;
+}
+
+function canUsePseudoFullscreen() {
+  return isIPhoneSafari();
+}
+
+function shouldPreferPseudoFullscreen() {
+  return canUsePseudoFullscreen();
+}
+
+function isFullscreenUiActive() {
+  return isFullscreenActive() || pseudoFullscreenActive;
+}
+
+function setPseudoFullscreen(next) {
+  pseudoFullscreenActive = Boolean(next);
+  document.body.classList.toggle('viewer-pseudo-fullscreen', pseudoFullscreenActive);
+}
+
 function updateFullscreenUiState() {
-  const isFullscreen = isFullscreenActive();
+  const isFullscreen = isFullscreenUiActive();
   document.body.classList.toggle('viewer-fullscreen', isFullscreen);
   btnFullscreenExit?.classList.toggle('hidden', !isFullscreen);
 }
@@ -1897,6 +1926,74 @@ function applyFloorplanZoom() {
   updateFloorplanZoomLabel();
 }
 
+function clampFloorplanScroll() {
+  if (!floorplanWrap) return;
+  const maxLeft = Math.max(0, floorplanWrap.scrollWidth - floorplanWrap.clientWidth);
+  const maxTop = Math.max(0, floorplanWrap.scrollHeight - floorplanWrap.clientHeight);
+  floorplanWrap.scrollLeft = Math.min(maxLeft, Math.max(0, floorplanWrap.scrollLeft));
+  floorplanWrap.scrollTop = Math.min(maxTop, Math.max(0, floorplanWrap.scrollTop));
+}
+
+function getFloorplanFitZoom() {
+  if (!floorplanWrap || !floorplanImage) return 1;
+  const naturalWidth = floorplanImage.naturalWidth || floorplanImage.width || 1;
+  const naturalHeight = floorplanImage.naturalHeight || floorplanImage.height || 1;
+  const wrapWidth = Math.max(1, floorplanWrap.clientWidth);
+  const wrapHeight = Math.max(1, floorplanWrap.clientHeight);
+  const fitByWidth = wrapWidth / naturalWidth;
+  const fitByHeight = wrapHeight / naturalHeight;
+  const fitZoom = Math.min(fitByWidth, fitByHeight);
+  return Math.max(0.1, Math.min(4, fitZoom));
+}
+
+function resetFloorplanView() {
+  const nextZoom = isMobileViewerLayout() ? getFloorplanFitZoom() : 1;
+  setActiveFloorplanZoom(nextZoom);
+  if (floorplanWrap) {
+    floorplanWrap.scrollLeft = 0;
+    floorplanWrap.scrollTop = 0;
+    clampFloorplanScroll();
+  }
+}
+
+function getTouchCenter(touchA, touchB) {
+  return {
+    x: (touchA.clientX + touchB.clientX) / 2,
+    y: (touchA.clientY + touchB.clientY) / 2
+  };
+}
+
+function getTouchDistance(touchA, touchB) {
+  const dx = touchA.clientX - touchB.clientX;
+  const dy = touchA.clientY - touchB.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function zoomFloorplanTo(nextZoom, options = {}) {
+  if (!activeGroupId) return;
+  const oldZoom = getActiveFloorplanZoom();
+  const clamped = Math.min(4, Math.max(0.5, nextZoom));
+  if (!Number.isFinite(clamped)) return;
+  if (!floorplanWrap || !floorplanStage || Math.abs(clamped - oldZoom) < 0.0001) {
+    floorplanZoomByGroup.set(activeGroupId, clamped);
+    applyFloorplanZoom();
+    return;
+  }
+
+  const wrapRect = floorplanWrap.getBoundingClientRect();
+  const localX = Number.isFinite(options.clientX) ? (options.clientX - wrapRect.left) : floorplanWrap.clientWidth / 2;
+  const localY = Number.isFinite(options.clientY) ? (options.clientY - wrapRect.top) : floorplanWrap.clientHeight / 2;
+  const baseX = (floorplanWrap.scrollLeft + localX) / oldZoom;
+  const baseY = (floorplanWrap.scrollTop + localY) / oldZoom;
+
+  floorplanZoomByGroup.set(activeGroupId, clamped);
+  applyFloorplanZoom();
+
+  floorplanWrap.scrollLeft = (baseX * clamped) - localX;
+  floorplanWrap.scrollTop = (baseY * clamped) - localY;
+  clampFloorplanScroll();
+}
+
 function updateFloorplanExpandButton() {
   if (!btnFloorplanExpand) return;
   btnFloorplanExpand.textContent = floorplanExpanded ? 'Minimise' : 'Maximise';
@@ -1944,14 +2041,24 @@ function openMobilePanel(mode) {
   if (!isMobileViewerLayout() || orientationLocked) return;
   mobilePanelMode = mode === 'map' ? 'map' : mode === 'groups' ? 'groups' : 'scenes';
   updateMobilePanelUi();
-  requestAnimationFrame(refreshViewerLayout);
+  requestAnimationFrame(() => {
+    refreshViewerLayout();
+    if (mobilePanelMode === 'map') {
+      resetFloorplanView();
+    }
+  });
 }
 
 function toggleMobilePanel(mode) {
   if (!isMobileViewerLayout() || orientationLocked) return;
   mobilePanelMode = mobilePanelMode === mode ? null : mode;
   updateMobilePanelUi();
-  requestAnimationFrame(refreshViewerLayout);
+  requestAnimationFrame(() => {
+    refreshViewerLayout();
+    if (mobilePanelMode === 'map') {
+      resetFloorplanView();
+    }
+  });
 }
 
 function canUseFullscreen() {
@@ -1999,17 +2106,23 @@ function exitFullscreenFallback() {
 function syncFullscreenButton(project = projectData) {
   if (!btnFullscreen) return;
   const enabledBySettings = project?.settings?.fullscreenButton !== false;
-  const supported = canUseFullscreen();
+  const supported = canUseFullscreen() || canUsePseudoFullscreen();
   btnFullscreen.hidden = !enabledBySettings;
   btnFullscreen.disabled = !enabledBySettings || !supported;
   if (!enabledBySettings) return;
-  const isFullscreen = isFullscreenActive();
+  const isFullscreen = isFullscreenUiActive();
   btnFullscreen.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
   btnFullscreen.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
   updateFullscreenUiState();
 }
 
 function toggleFullscreen() {
+  if (shouldPreferPseudoFullscreen()) {
+    setPseudoFullscreen(!pseudoFullscreenActive);
+    syncFullscreenButton(projectData);
+    requestAnimationFrame(refreshViewerLayout);
+    return;
+  }
   if (!canUseFullscreen()) {
     openModal({
       title: 'Fullscreen',
@@ -2042,11 +2155,8 @@ function toggleFloorplanExpanded() {
   setFloorplanExpanded(!floorplanExpanded);
 }
 
-function setActiveFloorplanZoom(nextZoom) {
-  if (!activeGroupId) return;
-  const clamped = Math.min(4, Math.max(0.5, nextZoom));
-  floorplanZoomByGroup.set(activeGroupId, clamped);
-  applyFloorplanZoom();
+function setActiveFloorplanZoom(nextZoom, options = {}) {
+  zoomFloorplanTo(nextZoom, options);
 }
 
 function findSceneRuntimeById(sceneId) {
@@ -2144,6 +2254,18 @@ function renderFloorplan() {
   floorplanEmpty.classList.add('hidden');
   applyFloorplanZoom();
   renderFloorplanMarkers();
+  const handleFloorplanReady = () => {
+    if (isMobileViewerLayout()) {
+      resetFloorplanView();
+    } else {
+      clampFloorplanScroll();
+    }
+  };
+  if (floorplanImage.complete) {
+    requestAnimationFrame(handleFloorplanReady);
+  } else {
+    floorplanImage.onload = () => requestAnimationFrame(handleFloorplanReady);
+  }
 }
 
 function renderSceneList() {
@@ -2389,9 +2511,134 @@ btnFloorplanZoomIn?.addEventListener('click', () => {
   setActiveFloorplanZoom(getActiveFloorplanZoom() + 0.1);
 });
 btnFloorplanZoomReset?.addEventListener('click', () => {
-  setActiveFloorplanZoom(1);
+  resetFloorplanView();
 });
+btnFloorplanMobileClose?.addEventListener('click', closeMobilePanel);
 btnFloorplanExpand?.addEventListener('click', toggleFloorplanExpanded);
+floorplanWrap?.addEventListener('wheel', (event) => {
+  if (!floorplanStage || floorplanStage.classList.contains('hidden')) return;
+  event.preventDefault();
+  const direction = event.deltaY < 0 ? 1 : -1;
+  const step = event.ctrlKey ? 0.2 : 0.12;
+  setActiveFloorplanZoom(getActiveFloorplanZoom() + (direction * step), { clientX: event.clientX, clientY: event.clientY });
+}, { passive: false });
+floorplanWrap?.addEventListener('pointerdown', (event) => {
+  if (event.pointerType !== 'mouse' || event.button !== 0) return;
+  if (event.target instanceof Element && event.target.closest('.floorplan-scene-marker')) return;
+  if (!floorplanStage || floorplanStage.classList.contains('hidden')) return;
+  floorplanPanState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startLeft: floorplanWrap.scrollLeft,
+    startTop: floorplanWrap.scrollTop
+  };
+  floorplanWrap.classList.add('dragging');
+  floorplanWrap.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+});
+floorplanWrap?.addEventListener('pointermove', (event) => {
+  if (!floorplanPanState || floorplanPanState.pointerId !== event.pointerId) return;
+  const dx = event.clientX - floorplanPanState.startX;
+  const dy = event.clientY - floorplanPanState.startY;
+  floorplanWrap.scrollLeft = floorplanPanState.startLeft - dx;
+  floorplanWrap.scrollTop = floorplanPanState.startTop - dy;
+  clampFloorplanScroll();
+});
+function endFloorplanPan(event) {
+  if (!floorplanPanState) return;
+  if (event && floorplanPanState.pointerId !== event.pointerId) return;
+  floorplanWrap?.classList.remove('dragging');
+  floorplanWrap?.releasePointerCapture?.(floorplanPanState.pointerId);
+  floorplanPanState = null;
+}
+floorplanWrap?.addEventListener('pointerup', endFloorplanPan);
+floorplanWrap?.addEventListener('pointercancel', endFloorplanPan);
+floorplanWrap?.addEventListener('touchstart', (event) => {
+  if (!isMobileViewerLayout()) return;
+  if (!floorplanStage || floorplanStage.classList.contains('hidden')) return;
+  if (event.target instanceof Element && event.target.closest('.floorplan-scene-marker')) return;
+  const touches = event.touches;
+  if (touches.length === 1) {
+    floorplanTouchState = {
+      mode: 'pan',
+      startX: touches[0].clientX,
+      startY: touches[0].clientY,
+      startLeft: floorplanWrap.scrollLeft,
+      startTop: floorplanWrap.scrollTop
+    };
+  } else if (touches.length >= 2) {
+    const center = getTouchCenter(touches[0], touches[1]);
+    const wrapRect = floorplanWrap.getBoundingClientRect();
+    floorplanTouchState = {
+      mode: 'pinch',
+      startDistance: getTouchDistance(touches[0], touches[1]),
+      startZoom: getActiveFloorplanZoom(),
+      baseX: (floorplanWrap.scrollLeft + (center.x - wrapRect.left)) / getActiveFloorplanZoom(),
+      baseY: (floorplanWrap.scrollTop + (center.y - wrapRect.top)) / getActiveFloorplanZoom()
+    };
+  }
+}, { passive: true });
+floorplanWrap?.addEventListener('touchmove', (event) => {
+  if (!isMobileViewerLayout() || !floorplanTouchState) return;
+  if (!floorplanStage || floorplanStage.classList.contains('hidden')) return;
+  const touches = event.touches;
+  if (floorplanTouchState.mode === 'pan' && touches.length === 1) {
+    const dx = touches[0].clientX - floorplanTouchState.startX;
+    const dy = touches[0].clientY - floorplanTouchState.startY;
+    floorplanWrap.scrollLeft = floorplanTouchState.startLeft - dx;
+    floorplanWrap.scrollTop = floorplanTouchState.startTop - dy;
+    clampFloorplanScroll();
+    event.preventDefault();
+    return;
+  }
+  if (touches.length >= 2) {
+    if (floorplanTouchState.mode !== 'pinch') {
+      const center = getTouchCenter(touches[0], touches[1]);
+      const wrapRect = floorplanWrap.getBoundingClientRect();
+      floorplanTouchState = {
+        mode: 'pinch',
+        startDistance: getTouchDistance(touches[0], touches[1]),
+        startZoom: getActiveFloorplanZoom(),
+        baseX: (floorplanWrap.scrollLeft + (center.x - wrapRect.left)) / getActiveFloorplanZoom(),
+        baseY: (floorplanWrap.scrollTop + (center.y - wrapRect.top)) / getActiveFloorplanZoom()
+      };
+    }
+    const distance = getTouchDistance(touches[0], touches[1]);
+    const nextZoom = floorplanTouchState.startZoom * (distance / Math.max(1, floorplanTouchState.startDistance));
+    const wrapRect = floorplanWrap.getBoundingClientRect();
+    const center = getTouchCenter(touches[0], touches[1]);
+    const localX = center.x - wrapRect.left;
+    const localY = center.y - wrapRect.top;
+    const clamped = Math.min(4, Math.max(0.5, nextZoom));
+    floorplanZoomByGroup.set(activeGroupId, clamped);
+    applyFloorplanZoom();
+    floorplanWrap.scrollLeft = (floorplanTouchState.baseX * clamped) - localX;
+    floorplanWrap.scrollTop = (floorplanTouchState.baseY * clamped) - localY;
+    clampFloorplanScroll();
+    event.preventDefault();
+  }
+}, { passive: false });
+floorplanWrap?.addEventListener('touchend', (event) => {
+  if (!isMobileViewerLayout()) return;
+  const touches = event.touches;
+  if (!touches.length) {
+    floorplanTouchState = null;
+    return;
+  }
+  if (touches.length === 1) {
+    floorplanTouchState = {
+      mode: 'pan',
+      startX: touches[0].clientX,
+      startY: touches[0].clientY,
+      startLeft: floorplanWrap.scrollLeft,
+      startTop: floorplanWrap.scrollTop
+    };
+  }
+});
+floorplanWrap?.addEventListener('touchcancel', () => {
+  floorplanTouchState = null;
+});
 btnMobileGroups?.addEventListener('click', () => toggleMobilePanel('groups'));
 btnMobileScenes?.addEventListener('click', () => toggleMobilePanel('scenes'));
 btnMobileMap?.addEventListener('click', () => toggleMobilePanel('map'));

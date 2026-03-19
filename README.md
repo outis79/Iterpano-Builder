@@ -46,6 +46,7 @@ The project is operational and currently includes:
 - viewer with groups, floorplan, hotspot modal, gyro toggle, and basic VR/Cardboard mode
 - exported viewer opens without static placeholder text inside the panorama area
 - exported viewer includes a mobile-first layout: panorama prioritized, `Group`, `Scenes`, and `Map` open as fullscreen overlays
+- exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
@@ -68,7 +69,9 @@ Verified synchronization points between `editor` and `viewer`:
   - `Group`, `Scenes`, and `Map` opened from topbar buttons
   - each mobile panel overlays the full viewer area, including the top bar
   - `Scenes` shows only the current group scene list
-  - `Map` opens as a fullscreen mobile overlay with zoom controls
+  - `Map` opens as a fullscreen mobile overlay with automatic fit-to-screen
+  - mobile map keeps compact `Reset` / `Close` actions as floating side controls
+  - mobile map supports one-finger pan and two-finger pinch zoom
   - info hotspots clamped to mobile viewport size
 
 Practical implication: if a tour behaves correctly in editor and you export a static package, the exported viewer follows the same main-group/main-scene entry logic and can show the configured Home Page first.
@@ -177,6 +180,8 @@ Operational notes:
 - Group-level image actions are in the left `Groups` panel (`Upload Img`, `Delete All Img`).
 - Map maximize is constrained to a floating area over the panorama (full height, about 1/3 width).
 - In the exported viewer, maximized map panel uses the viewer dark theme with 60% transparency for control readability.
+- In the exported viewer on desktop, the map can be panned with left mouse drag and zoomed with the mouse wheel.
+- In the exported viewer on mobile, the map opens as a fullscreen overlay, auto-fits to the available viewport, and supports touch pan/pinch.
 - On mobile, the exported viewer hides `Group`, `Scenes`, and `Map` by default and exposes them through topbar overlay toggles.
 
 ## Project Package ZIP
