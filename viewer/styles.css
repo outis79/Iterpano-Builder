@@ -984,18 +984,23 @@ body.viewer-pseudo-fullscreen .viewer-shell {
   }
 
   .floorplan-scene-marker {
-    width: 18px;
-    min-width: 18px;
-    height: 18px;
-    min-height: 18px;
+    width: 14px;
+    min-width: 14px;
+    height: 14px;
+    min-height: 14px;
     border-width: 2px;
   }
 
   .floorplan-scene-marker.active {
-    width: 20px;
-    min-width: 20px;
-    height: 20px;
-    min-height: 20px;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    min-height: 16px;
+  }
+
+  body.mobile-panel-groups .side-panel,
+  body.mobile-panel-scenes .side-panel {
+    touch-action: pan-y;
   }
 
   .license-footer {

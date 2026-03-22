@@ -29,6 +29,7 @@ const floorplanImage = document.getElementById('floorplan-image');
 const floorplanMarkers = document.getElementById('floorplan-markers');
 const floorplanEmpty = document.getElementById('floorplan-empty');
 const floorplanPanel = document.getElementById('floorplan-panel');
+const sidePanel = document.querySelector('.side-panel');
 const floorplanWrap = floorplanPanel?.querySelector('.floorplan-wrap');
 const btnFloorplanZoomOut = document.getElementById('btn-floorplan-zoom-out');
 const btnFloorplanZoomIn = document.getElementById('btn-floorplan-zoom-in');
@@ -76,6 +77,7 @@ let homePageVisible = false;
 let floorplanExpanded = false;
 let floorplanPanState = null;
 let floorplanTouchState = null;
+let floorplanMinZoomByGroup = new Map();
 let activeInfoHotspot = null;
 let activeInfoHotspotElement = null;
 let activeInfoHotspotAnchorOffset = null;
@@ -115,6 +117,10 @@ const DEFAULT_INFO_BG_TRANSPARENCY = 0;
 const DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_X = 0;
 const DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y = 10;
 const DEFAULT_INFO_HOTSPOT_DISPLAY_MODE = 'click';
+const FLOORPLAN_MIN_ZOOM = 0.1;
+const FLOORPLAN_MAX_ZOOM = 4;
+const MOBILE_SCENE_MAX_FOV_RATIO = 4.0;
+let lastMobileViewerLayout = false;
 
 function normalizeTextAlign(value) {
   const candidate = String(value || 'left').trim().toLowerCase();
@@ -131,6 +137,36 @@ function isMobileViewerLayout() {
 
 function isPortraitLockedMobileLayout() {
   return isMobileViewerLayout() && window.innerHeight > window.innerWidth;
+}
+
+function getMobileSceneMaxFov(sceneData) {
+  const initialFov = sceneData?.initialViewParameters?.fov || 1.4;
+  return Math.min(Math.PI, initialFov * MOBILE_SCENE_MAX_FOV_RATIO);
+}
+
+function buildSceneLimiter(sceneData) {
+  const width = sceneData?.sourceImage?.width || sceneData?.faceSize || 4096;
+  const maxHorizontalFov = Math.PI;
+  const maxVerticalFov = isMobileViewerLayout() ? getMobileSceneMaxFov(sceneData) : Math.PI;
+  return Marzipano.RectilinearView.limit.traditional(width, maxHorizontalFov, maxVerticalFov);
+}
+
+function syncSceneViewLimiters() {
+  scenes.forEach((scene) => {
+    try {
+      scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+    } catch {}
+  });
+  vrViewers?.leftScenes?.forEach((scene) => {
+    try {
+      scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+    } catch {}
+  });
+  vrViewers?.rightScenes?.forEach((scene) => {
+    try {
+      scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+    } catch {}
+  });
 }
 
 function updateOrientationLockUi() {
@@ -190,6 +226,11 @@ function syncViewerViewportMetrics() {
 
 function refreshViewerLayout() {
   syncViewerViewportMetrics();
+  const isMobileLayout = isMobileViewerLayout();
+  if (lastMobileViewerLayout !== isMobileLayout) {
+    lastMobileViewerLayout = isMobileLayout;
+    syncSceneViewLimiters();
+  }
   updateOrientationLockUi();
   if (orientationLocked) return;
   const rect = panoElement?.getBoundingClientRect();
@@ -224,6 +265,17 @@ function refreshViewerLayout() {
     });
     if (typeof vrViewers?.rightViewer?.updateSize === 'function') {
       try { vrViewers.rightViewer.updateSize(); } catch {}
+    }
+  }
+
+  if (isMobileLayout && mobilePanelMode === 'map' && activeGroupId && floorplanWrap && floorplanStage && !floorplanStage.classList.contains('hidden')) {
+    const minZoom = updateActiveFloorplanMinZoom();
+    const currentZoom = getActiveFloorplanZoom();
+    if (currentZoom < minZoom) {
+      setActiveFloorplanZoom(minZoom);
+    } else {
+      applyFloorplanZoom();
+      clampFloorplanScroll();
     }
   }
 }
@@ -1646,7 +1698,7 @@ function buildSceneRuntime(sceneData) {
     return {
       source: Marzipano.ImageUrlSource.fromString(sceneData.sourceImage.dataUrl),
       geometry: new Marzipano.EquirectGeometry([{ width }]),
-      limiter: Marzipano.RectilinearView.limit.traditional(width, Math.PI, Math.PI)
+      limiter: buildSceneLimiter(sceneData)
     };
   }
 
@@ -1661,7 +1713,7 @@ function buildSceneRuntime(sceneData) {
         { cubeMapPreviewUrl: previewPath }
       ),
       geometry: new Marzipano.CubeGeometry(levels),
-      limiter: Marzipano.RectilinearView.limit.traditional(sceneData.faceSize || 2048, Math.PI, Math.PI)
+      limiter: buildSceneLimiter(sceneData)
     };
   }
 
@@ -1934,20 +1986,35 @@ function clampFloorplanScroll() {
   floorplanWrap.scrollTop = Math.min(maxTop, Math.max(0, floorplanWrap.scrollTop));
 }
 
+function getActiveFloorplanMinZoom() {
+  if (!activeGroupId) return FLOORPLAN_MIN_ZOOM;
+  const value = floorplanMinZoomByGroup.get(activeGroupId);
+  return Number.isFinite(value) ? value : FLOORPLAN_MIN_ZOOM;
+}
+
 function getFloorplanFitZoom() {
   if (!floorplanWrap || !floorplanImage) return 1;
   const naturalWidth = floorplanImage.naturalWidth || floorplanImage.width || 1;
   const naturalHeight = floorplanImage.naturalHeight || floorplanImage.height || 1;
   const wrapWidth = Math.max(1, floorplanWrap.clientWidth);
   const wrapHeight = Math.max(1, floorplanWrap.clientHeight);
-  const fitByWidth = wrapWidth / naturalWidth;
-  const fitByHeight = wrapHeight / naturalHeight;
+  const renderedWidthAtZoomOne = wrapWidth;
+  const renderedHeightAtZoomOne = renderedWidthAtZoomOne * (naturalHeight / naturalWidth);
+  const fitByWidth = 1;
+  const fitByHeight = wrapHeight / Math.max(1, renderedHeightAtZoomOne);
   const fitZoom = Math.min(fitByWidth, fitByHeight);
-  return Math.max(0.1, Math.min(4, fitZoom));
+  return Math.max(FLOORPLAN_MIN_ZOOM, Math.min(FLOORPLAN_MAX_ZOOM, fitZoom));
+}
+
+function updateActiveFloorplanMinZoom() {
+  if (!activeGroupId) return FLOORPLAN_MIN_ZOOM;
+  const fitZoom = getFloorplanFitZoom();
+  floorplanMinZoomByGroup.set(activeGroupId, fitZoom);
+  return fitZoom;
 }
 
 function resetFloorplanView() {
-  const nextZoom = isMobileViewerLayout() ? getFloorplanFitZoom() : 1;
+  const nextZoom = isMobileViewerLayout() ? updateActiveFloorplanMinZoom() : 1;
   setActiveFloorplanZoom(nextZoom);
   if (floorplanWrap) {
     floorplanWrap.scrollLeft = 0;
@@ -1972,7 +2039,8 @@ function getTouchDistance(touchA, touchB) {
 function zoomFloorplanTo(nextZoom, options = {}) {
   if (!activeGroupId) return;
   const oldZoom = getActiveFloorplanZoom();
-  const clamped = Math.min(4, Math.max(0.5, nextZoom));
+  const minZoom = isMobileViewerLayout() ? getActiveFloorplanMinZoom() : FLOORPLAN_MIN_ZOOM;
+  const clamped = Math.min(FLOORPLAN_MAX_ZOOM, Math.max(minZoom, nextZoom));
   if (!Number.isFinite(clamped)) return;
   if (!floorplanWrap || !floorplanStage || Math.abs(clamped - oldZoom) < 0.0001) {
     floorplanZoomByGroup.set(activeGroupId, clamped);
@@ -2610,7 +2678,8 @@ floorplanWrap?.addEventListener('touchmove', (event) => {
     const center = getTouchCenter(touches[0], touches[1]);
     const localX = center.x - wrapRect.left;
     const localY = center.y - wrapRect.top;
-    const clamped = Math.min(4, Math.max(0.5, nextZoom));
+    const minZoom = isMobileViewerLayout() ? getActiveFloorplanMinZoom() : FLOORPLAN_MIN_ZOOM;
+    const clamped = Math.min(FLOORPLAN_MAX_ZOOM, Math.max(minZoom, nextZoom));
     floorplanZoomByGroup.set(activeGroupId, clamped);
     applyFloorplanZoom();
     floorplanWrap.scrollLeft = (floorplanTouchState.baseX * clamped) - localX;
@@ -2661,6 +2730,13 @@ function handleGroupSelectionChange(nextGroupId) {
 }
 
 groupSelect?.addEventListener('change', () => handleGroupSelectionChange(groupSelect.value));
+
+sidePanel?.addEventListener('touchmove', (event) => {
+  if (!isMobileViewerLayout()) return;
+  if ((mobilePanelMode === 'groups' || mobilePanelMode === 'scenes') && event.touches.length > 1) {
+    event.preventDefault();
+  }
+}, { passive: false });
 
 document.getElementById('btn-close-modal').addEventListener('click', closeModal);
 modalContent?.addEventListener('pointerdown', (event) => {
