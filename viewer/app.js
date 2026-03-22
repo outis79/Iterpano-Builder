@@ -121,6 +121,7 @@ const FLOORPLAN_MIN_ZOOM = 0.1;
 const FLOORPLAN_MAX_ZOOM = 4;
 const MOBILE_SCENE_MAX_FOV_RATIO = 4.0;
 let lastMobileViewerLayout = false;
+let lastMobileSceneLimiterMode = false;
 
 function normalizeTextAlign(value) {
   const candidate = String(value || 'left').trim().toLowerCase();
@@ -135,36 +136,67 @@ function isMobileViewerLayout() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
 }
 
+function isTouchMobileDevice() {
+  const ua = navigator.userAgent || '';
+  const hasCoarsePointer = typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  const hasTouchPoints = (navigator.maxTouchPoints || 0) > 0;
+  const isMobileUa = /Android|iPhone|iPad|iPod/i.test(ua);
+  return isMobileUa || (hasCoarsePointer && hasTouchPoints);
+}
+
+function shouldUseMobileSceneZoomPolicy() {
+  return isTouchMobileDevice();
+}
+
 function isPortraitLockedMobileLayout() {
   return isMobileViewerLayout() && window.innerHeight > window.innerWidth;
 }
 
 function getMobileSceneMaxFov(sceneData) {
   const initialFov = sceneData?.initialViewParameters?.fov || 1.4;
-  return Math.min(Math.PI, initialFov * MOBILE_SCENE_MAX_FOV_RATIO);
+  const initialHalfFov = initialFov / 2;
+  const scaledTangent = Math.tan(initialHalfFov) * MOBILE_SCENE_MAX_FOV_RATIO;
+  return Math.min(Math.PI - 0.000001, 2 * Math.atan(scaledTangent));
 }
 
 function buildSceneLimiter(sceneData) {
   const width = sceneData?.sourceImage?.width || sceneData?.faceSize || 4096;
+  const maxVerticalFov = shouldUseMobileSceneZoomPolicy() ? getMobileSceneMaxFov(sceneData) : Math.PI;
   const maxHorizontalFov = Math.PI;
-  const maxVerticalFov = isMobileViewerLayout() ? getMobileSceneMaxFov(sceneData) : Math.PI;
-  return Marzipano.RectilinearView.limit.traditional(width, maxHorizontalFov, maxVerticalFov);
+  return Marzipano.RectilinearView.limit.traditional(width, maxVerticalFov, maxHorizontalFov);
+}
+
+function clampSceneViewFov(view, sceneData) {
+  if (!view || !shouldUseMobileSceneZoomPolicy()) return false;
+  const maxFov = getMobileSceneMaxFov(sceneData);
+  const currentFov = typeof view.fov === 'function' ? view.fov() : view.parameters?.().fov;
+  if (!Number.isFinite(currentFov) || currentFov <= maxFov + 0.0001) return false;
+  try {
+    view.setFov(maxFov);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function syncSceneViewLimiters() {
   scenes.forEach((scene) => {
     try {
       scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+      clampSceneViewFov(scene.view, scene.data);
     } catch {}
   });
   vrViewers?.leftScenes?.forEach((scene) => {
     try {
       scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+      clampSceneViewFov(scene.view, scene.data);
     } catch {}
   });
   vrViewers?.rightScenes?.forEach((scene) => {
     try {
       scene.view?.setLimiter?.(buildSceneLimiter(scene.data));
+      clampSceneViewFov(scene.view, scene.data);
     } catch {}
   });
 }
@@ -229,6 +261,10 @@ function refreshViewerLayout() {
   const isMobileLayout = isMobileViewerLayout();
   if (lastMobileViewerLayout !== isMobileLayout) {
     lastMobileViewerLayout = isMobileLayout;
+  }
+  const useMobileSceneLimiter = shouldUseMobileSceneZoomPolicy();
+  if (lastMobileSceneLimiterMode !== useMobileSceneLimiter) {
+    lastMobileSceneLimiterMode = useMobileSceneLimiter;
     syncSceneViewLimiters();
   }
   updateOrientationLockUi();
@@ -1628,6 +1664,7 @@ function buildViewer(project) {
     });
 
     view.addEventListener('change', () => {
+      clampSceneViewFov(view, sceneData);
       applyHotspotScale({ view, hotspotElements });
     });
 
@@ -1686,8 +1723,10 @@ function buildVrViewers(project) {
 
   leftScenes.forEach((scene, index) => {
     scene.view.addEventListener('change', () => {
+      clampSceneViewFov(scene.view, scene.data);
       const params = scene.view.parameters();
       rightScenes[index].view.setParameters(params);
+      clampSceneViewFov(rightScenes[index].view, rightScenes[index].data);
     });
   });
 }
@@ -2380,6 +2419,7 @@ function switchScene(scene, options = {}) {
   }
 
   scene.view.setParameters(scene.data.initialViewParameters || { yaw: 0, pitch: 0, fov: 1.4 });
+  clampSceneViewFov(scene.view, scene.data);
   scene.scene.switchTo();
   applyHotspotScale(scene);
   renderSceneList();
@@ -2391,6 +2431,8 @@ function switchScene(scene, options = {}) {
     if (leftScene && rightScene) {
       leftScene.view.setParameters(scene.data.initialViewParameters || { yaw: 0, pitch: 0, fov: 1.4 });
       rightScene.view.setParameters(scene.data.initialViewParameters || { yaw: 0, pitch: 0, fov: 1.4 });
+      clampSceneViewFov(leftScene.view, leftScene.data);
+      clampSceneViewFov(rightScene.view, rightScene.data);
       leftScene.scene.switchTo();
       rightScene.scene.switchTo();
     }
@@ -2756,6 +2798,14 @@ modalContent?.addEventListener('mouseleave', () => {
 });
 btnHomePageStart?.addEventListener('click', startTourFromHomePage);
 btnHomeToggle?.addEventListener('click', toggleHomePageOverlay);
+[panoElement, panoLeft, panoRight].filter(Boolean).forEach((element) => {
+  element.addEventListener('touchmove', (event) => {
+    if (!shouldUseMobileSceneZoomPolicy()) return;
+    if (event.touches.length > 1) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+});
 window.screenfull?.on?.('change', () => {
   syncFullscreenButton(projectData);
   requestAnimationFrame(refreshViewerLayout);
