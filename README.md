@@ -48,13 +48,13 @@ The project is operational and currently includes:
 - exported viewer includes a mobile-first layout: panorama prioritized, `Group`, `Scenes`, and `Map` open as fullscreen overlays
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
-- refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, and mobile panels now live in dedicated viewer modules
+- refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, mobile panels, and hotspot/modal now live in dedicated viewer modules
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
 - both use the same project source format (`shared/sample-tour.json`)
 - static export always bundles current viewer runtime files (`viewer/index.html`, `viewer/app.js`, `viewer/styles.css`, `viewer/vendor/*`)
-- static export now bundles the extracted viewer runtime modules (`viewer/runtime-ui.js`, `viewer/runtime-gyro.js`, `viewer/runtime-floorplan.js`, `viewer/runtime-mobile-panels.js`)
+- static export now bundles the extracted viewer runtime modules (`viewer/runtime-ui.js`, `viewer/runtime-gyro.js`, `viewer/runtime-floorplan.js`, `viewer/runtime-mobile-panels.js`, `viewer/runtime-hotspots.js`)
 - scene-link hotspots (`contentBlocks.type = scene`) are resolved in viewer and switch scene correctly
 - scene alias is used consistently by editor/viewer for `Go to ...` link labels
 - exported scene-link tooltip uses the target scene alias (`Go to <alias>`) instead of the link code/title
@@ -91,6 +91,7 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `viewer/runtime-gyro.js`: extracted gyro runtime module
 - `viewer/runtime-floorplan.js`: extracted floorplan/map runtime module
 - `viewer/runtime-mobile-panels.js`: extracted mobile panel runtime module
+- `viewer/runtime-hotspots.js`: extracted hotspot/modal runtime module
 - `viewer/styles.css`: viewer styles
 - `viewer/vendor/`: runtime libraries (`marzipano`, `screenfull`, `bowser`, reset CSS)
 - `shared/sample-tour.json`: blank default project template loaded by editor and viewer

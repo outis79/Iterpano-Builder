@@ -8524,6 +8524,7 @@ async function collectViewerRuntimeFiles() {
     'viewer/runtime-gyro.js',
     'viewer/runtime-floorplan.js',
     'viewer/runtime-mobile-panels.js',
+    'viewer/runtime-hotspots.js',
     'viewer/styles.css',
     'viewer/vendor/marzipano.js',
     'viewer/vendor/bowser.min.js',
