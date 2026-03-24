@@ -2533,7 +2533,7 @@ function getGyroFallbackPose(event) {
     screenQuaternion,
   );
   const forward = applyQuaternionToVector({ x: 0, y: 0, z: -1 }, cameraQuaternion);
-  const pitchDeg = (Math.asin(Math.max(-1, Math.min(1, forward.y))) * 180) / Math.PI;
+  const pitchDeg = (-Math.asin(Math.max(-1, Math.min(1, forward.y))) * 180) / Math.PI;
   const horizontalLength = Math.hypot(forward.x, forward.z);
   const yawDeg = horizontalLength > 1e-3 ? (Math.atan2(forward.x, -forward.z) * 180) / Math.PI : null;
   return { pitchDeg, yawDeg };
