@@ -48,11 +48,13 @@ The project is operational and currently includes:
 - exported viewer includes a mobile-first layout: panorama prioritized, `Group`, `Scenes`, and `Map` open as fullscreen overlays
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
+- refactoring status: viewer runtime extraction started; fullscreen/orientation and gyro now live in dedicated viewer modules
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
 - both use the same project source format (`shared/sample-tour.json`)
 - static export always bundles current viewer runtime files (`viewer/index.html`, `viewer/app.js`, `viewer/styles.css`, `viewer/vendor/*`)
+- static export now bundles the extracted viewer runtime modules (`viewer/runtime-ui.js`, `viewer/runtime-gyro.js`)
 - scene-link hotspots (`contentBlocks.type = scene`) are resolved in viewer and switch scene correctly
 - scene alias is used consistently by editor/viewer for `Go to ...` link labels
 - exported scene-link tooltip uses the target scene alias (`Go to <alias>`) instead of the link code/title

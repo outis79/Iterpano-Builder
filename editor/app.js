@@ -8520,6 +8520,8 @@ async function collectViewerRuntimeFiles() {
   const runtimePaths = [
     'viewer/index.html',
     'viewer/app.js',
+    'viewer/runtime-ui.js',
+    'viewer/runtime-gyro.js',
     'viewer/styles.css',
     'viewer/vendor/marzipano.js',
     'viewer/vendor/bowser.min.js',
