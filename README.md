@@ -47,7 +47,7 @@ The project is operational and currently includes:
 - exported viewer opens without static placeholder text inside the panorama area
 - exported viewer includes a mobile-first layout: panorama prioritized, `Group`, `Scenes`, and `Map` open as fullscreen overlays
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
-- exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction
+- exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
@@ -65,7 +65,7 @@ Verified synchronization points between `editor` and `viewer`:
 - exported viewer info hotspots preserve editor marker colors
 - exported viewer closes open info modals automatically when scene changes
 - exported viewer quick info hotspots use hover on desktop and tap fallback on touch devices
-- exported viewer gyro on mobile now keeps yaw stable near vertical movement and aligns pitch direction with device tilt
+- exported viewer gyro on mobile now keeps yaw stable near vertical movement and aligns pitch direction with device tilt in the exported package
 - exported viewer uses a dedicated mobile layout below `900px`
   - panorama prioritized
   - `Group`, `Scenes`, and `Map` opened from topbar buttons
@@ -184,7 +184,7 @@ Operational notes:
 - In the exported viewer, maximized map panel uses the viewer dark theme with 60% transparency for control readability.
 - In the exported viewer on desktop, the map can be panned with left mouse drag and zoomed with the mouse wheel.
 - In the exported viewer on mobile, the map opens as a fullscreen overlay, auto-fits to the available viewport, and supports touch pan/pinch.
-- In the exported viewer on mobile, the gyro fallback keeps yaw continuity near steep tilt angles and uses corrected pitch direction.
+- In the exported viewer on mobile, the gyro fallback keeps yaw continuity near steep tilt angles and uses corrected pitch direction in the tested exported package.
 - On mobile, the exported viewer hides `Group`, `Scenes`, and `Map` by default and exposes them through topbar overlay toggles.
 
 ## Project Package ZIP
