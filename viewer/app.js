@@ -78,7 +78,6 @@ let quickInfoHoverElement = null;
 let quickInfoHoverTimer = null;
 let quickInfoCloseTimer = null;
 let quickInfoModalHover = false;
-let mobilePanelMode = null;
 
 const FLOORPLAN_COLOR_MAP = {
   yellow: '#f0c84b',
@@ -124,6 +123,7 @@ function isMobileViewerLayout() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
 }
 
+let runtimePanels = null;
 const runtimeUi = window.IterpanoRuntimeUi.createViewerRuntimeUi({
   viewerHeader,
   licenseFooter,
@@ -134,7 +134,7 @@ const runtimeUi = window.IterpanoRuntimeUi.createViewerRuntimeUi({
   panoElement,
   isMobileViewerLayout,
   onOrientationLock() {
-    closeMobilePanel();
+    runtimePanels?.close();
     hideSceneLinkTooltip();
     if (modal?.classList.contains('visible')) {
       closeModal();
@@ -182,6 +182,21 @@ const runtimeFloorplan = window.IterpanoRuntimeFloorplan.createViewerFloorplanCo
   normalizeFloorplanColorKey,
   darkenHex,
   withAlpha,
+});
+
+runtimePanels = window.IterpanoRuntimeMobilePanels.createViewerMobilePanelsController({
+  btnMobileGroups,
+  btnMobileScenes,
+  btnMobileMap,
+  btnMobilePanelClose,
+  btnFloorplanMobileClose,
+  mobilePanelTitle,
+  mobilePanelBackdrop,
+  sidePanel,
+  isMobileViewerLayout,
+  isOrientationLocked: () => runtimeUi.isOrientationLocked(),
+  onRefreshLayout: refreshViewerLayout,
+  onMapOpen: resetFloorplanView,
 });
 
 function isTouchMobileDevice() {
@@ -293,7 +308,7 @@ function refreshViewerLayout() {
     }
   }
 
-  runtimeFloorplan.refreshLayout({ mobilePanelMode });
+  runtimeFloorplan.refreshLayout({ mobilePanelMode: runtimePanels?.getMode?.() });
 }
 
 function getMobileInfoFrameClamp() {
@@ -1265,7 +1280,7 @@ function renderHomePage(project = projectData) {
   trimTrailingEmptyParagraphs(homePageBody);
   resolveRichMediaReferencesInContainer(homePageBody, project, { preferDataUrl: false });
   homePageVisible = true;
-  closeMobilePanel();
+  runtimePanels?.close();
   homePageOverlay.classList.remove('hidden');
   homePageOverlay.setAttribute('aria-hidden', 'false');
   if (btnHomePageStart) {
@@ -1973,67 +1988,6 @@ function getActiveFloorplanZoom() {
   return runtimeFloorplan.getActiveZoom();
 }
 
-function updateMobilePanelUi() {
-  const isOpen = Boolean(mobilePanelMode);
-  document.body.classList.toggle('mobile-panel-open', isOpen);
-  document.body.classList.toggle('mobile-panel-groups', mobilePanelMode === 'groups');
-  document.body.classList.toggle('mobile-panel-scenes', mobilePanelMode === 'scenes');
-  document.body.classList.toggle('mobile-panel-map', mobilePanelMode === 'map');
-  mobilePanelBackdrop?.classList.toggle('hidden', !isOpen);
-  mobilePanelBackdrop?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-  if (mobilePanelTitle) {
-    mobilePanelTitle.textContent = mobilePanelMode === 'groups'
-      ? 'Groups'
-      : mobilePanelMode === 'map'
-        ? 'Map'
-        : 'Scenes';
-  }
-  if (btnMobileGroups) {
-    btnMobileGroups.classList.toggle('active', mobilePanelMode === 'groups');
-    btnMobileGroups.setAttribute('aria-pressed', mobilePanelMode === 'groups' ? 'true' : 'false');
-  }
-  if (btnMobileScenes) {
-    btnMobileScenes.classList.toggle('active', mobilePanelMode === 'scenes');
-    btnMobileScenes.setAttribute('aria-pressed', mobilePanelMode === 'scenes' ? 'true' : 'false');
-  }
-  if (btnMobileMap) {
-    btnMobileMap.classList.toggle('active', mobilePanelMode === 'map');
-    btnMobileMap.setAttribute('aria-pressed', mobilePanelMode === 'map' ? 'true' : 'false');
-  }
-}
-
-function closeMobilePanel() {
-  mobilePanelMode = null;
-  updateMobilePanelUi();
-  if (!runtimeUi.isOrientationLocked()) {
-    requestAnimationFrame(refreshViewerLayout);
-  }
-}
-
-function openMobilePanel(mode) {
-  if (!isMobileViewerLayout() || runtimeUi.isOrientationLocked()) return;
-  mobilePanelMode = mode === 'map' ? 'map' : mode === 'groups' ? 'groups' : 'scenes';
-  updateMobilePanelUi();
-  requestAnimationFrame(() => {
-    refreshViewerLayout();
-    if (mobilePanelMode === 'map') {
-      resetFloorplanView();
-    }
-  });
-}
-
-function toggleMobilePanel(mode) {
-  if (!isMobileViewerLayout() || runtimeUi.isOrientationLocked()) return;
-  mobilePanelMode = mobilePanelMode === mode ? null : mode;
-  updateMobilePanelUi();
-  requestAnimationFrame(() => {
-    refreshViewerLayout();
-    if (mobilePanelMode === 'map') {
-      resetFloorplanView();
-    }
-  });
-}
-
 function toggleFullscreen() {
   runtimeUi.toggleFullscreen(projectData);
 }
@@ -2099,7 +2053,7 @@ function switchScene(scene, options = {}) {
     closeModal();
   }
   if (isMobileViewerLayout()) {
-    closeMobilePanel();
+    runtimePanels?.close();
   }
   const syncGroup = options.syncGroup !== false;
   currentScene = scene;
@@ -2228,12 +2182,6 @@ btnReset.addEventListener('click', () => runtimeGyro.resetOrientation());
 btnVr.addEventListener('click', enterVr);
 btnFullscreen?.addEventListener('click', toggleFullscreen);
 btnFullscreenExit?.addEventListener('click', toggleFullscreen);
-btnFloorplanMobileClose?.addEventListener('click', closeMobilePanel);
-btnMobileGroups?.addEventListener('click', () => toggleMobilePanel('groups'));
-btnMobileScenes?.addEventListener('click', () => toggleMobilePanel('scenes'));
-btnMobileMap?.addEventListener('click', () => toggleMobilePanel('map'));
-btnMobilePanelClose?.addEventListener('click', closeMobilePanel);
-mobilePanelBackdrop?.addEventListener('click', closeMobilePanel);
 function handleGroupSelectionChange(nextGroupId) {
   activeGroupId = nextGroupId;
   if (groupSelect) {
@@ -2251,13 +2199,6 @@ function handleGroupSelectionChange(nextGroupId) {
 }
 
 groupSelect?.addEventListener('change', () => handleGroupSelectionChange(groupSelect.value));
-
-sidePanel?.addEventListener('touchmove', (event) => {
-  if (!isMobileViewerLayout()) return;
-  if ((mobilePanelMode === 'groups' || mobilePanelMode === 'scenes') && event.touches.length > 1) {
-    event.preventDefault();
-  }
-}, { passive: false });
 
 document.getElementById('btn-close-modal').addEventListener('click', closeModal);
 modalContent?.addEventListener('pointerdown', (event) => {
@@ -2298,15 +2239,15 @@ document.addEventListener('webkitfullscreenchange', () => {
   requestAnimationFrame(refreshViewerLayout);
 });
 runtimeFloorplan.updateExpandButton();
-updateMobilePanelUi();
+runtimePanels?.updateUi();
 runtimeUi.syncFullscreenButton(projectData);
 runtimeUi.updateFullscreenUiState();
 refreshViewerLayout();
 window.addEventListener('resize', () => {
   if (!isMobileViewerLayout()) {
-    closeMobilePanel();
+    runtimePanels?.close();
   } else {
-    updateMobilePanelUi();
+    runtimePanels?.updateUi();
   }
   refreshViewerLayout();
   if (activeSceneLinkTooltipElement) {
