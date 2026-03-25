@@ -50,6 +50,18 @@ The project is operational and currently includes:
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
 - refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, mobile panels, and hotspot/modal now live in dedicated viewer modules
 
+## Viewer Refactoring Status
+Completed viewer runtime extraction phases:
+- Phase 1: `fullscreen + orientation` -> `viewer/runtime-ui.js`
+- Phase 2: `gyro` -> `viewer/runtime-gyro.js`
+- Phase 3: `floorplan/map` -> `viewer/runtime-floorplan.js`
+- Phase 4: `mobile panels` -> `viewer/runtime-mobile-panels.js`
+- Phase 5: `hotspot/modal` -> `viewer/runtime-hotspots.js`
+
+Current result:
+- `viewer/app.js` acts primarily as the runtime coordinator
+- extracted modules are bundled into static export and used by the published viewer package
+
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
 - both use the same project source format (`shared/sample-tour.json`)
