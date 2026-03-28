@@ -964,6 +964,7 @@ textarea:disabled {
 .rich-editor-surface [data-layout^="columns-"] {
   display: grid;
   gap: 12px;
+  grid-auto-rows: max-content;
   align-items: stretch;
   margin: 0.15em 0;
   width: max-content;
@@ -973,14 +974,25 @@ textarea:disabled {
 .rich-editor-surface [data-layout^="columns-"] > [data-col] {
   position: relative;
   min-width: 0;
-  min-height: 0;
-  height: 100%;
+  min-height: max-content;
   border: 1px dashed rgba(240, 200, 75, 0.25);
   border-radius: 6px;
   padding: 2px 0;
+  box-sizing: border-box;
+  align-self: stretch;
   overflow: visible;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.rich-editor-surface [data-layout^="columns-"][data-height-locked="true"] {
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.rich-editor-surface [data-layout^="columns-"][data-height-locked="true"] > [data-col] {
+  min-height: 0;
+  height: 100%;
+  overflow: visible;
 }
 
 .rich-editor-surface [data-layout^="columns-"] > [data-col]:not(:last-child)::after {
@@ -1112,6 +1124,7 @@ textarea:disabled {
 .modal-body.preview-rich-surface [data-layout^="columns-"] {
   display: grid;
   gap: 12px;
+  grid-auto-rows: max-content;
   align-items: stretch;
   margin: 0.15em 0;
   width: max-content;
@@ -1121,15 +1134,25 @@ textarea:disabled {
 
 .modal-body.preview-rich-surface [data-layout^="columns-"] > [data-col] {
   min-width: 0;
-  min-height: 0;
-  height: 100%;
+  min-height: max-content;
   border: 1px solid transparent;
   border-radius: 6px;
   padding: 2px 0;
   box-sizing: border-box;
+  align-self: stretch;
   overflow: visible;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.modal-body.preview-rich-surface [data-layout^="columns-"][data-height-locked="true"] {
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.modal-body.preview-rich-surface [data-layout^="columns-"][data-height-locked="true"] > [data-col] {
+  min-height: 0;
+  height: 100%;
+  overflow: visible;
 }
 
 .modal-body.preview-rich-surface p {

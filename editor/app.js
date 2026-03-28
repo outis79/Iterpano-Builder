@@ -147,6 +147,10 @@ const btnClosePreview = document.getElementById('btn-close-preview');
 const richEditorModal = document.getElementById('rich-editor-modal');
 const richEditorModalContent = document.getElementById('rich-editor-modal-content');
 const richEditorSurface = document.getElementById('rich-editor-surface');
+let runtimeRichModal = null;
+let runtimeRichLayout = null;
+let runtimeRichSelection = null;
+let runtimeRichTypography = null;
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
 const btnRichSourceClose = document.getElementById('btn-rich-source-close');
@@ -211,18 +215,24 @@ let duplicatePanoramaListEntries = [];
 let generateAllTilesResolver = null;
 let richEditorContext = null;
 let richSourceContext = null;
-let selectedRichImageElement = null;
-let selectedRichLayoutElement = null;
-let richImageResizeHandleEl = null;
-let richImageResizeState = null;
 let richEditorSavedRange = null;
 let richEditorSavedExpandedRange = null;
-let richEditorDragState = null;
-let richLayoutResizeState = null;
-let richLayoutBlockResizeHandleHeightEl = null;
-let richLayoutBlockResizeState = null;
-let richModalResizeHandleEl = null;
-let richModalResizeState = null;
+function getRichEditorSavedRanges() {
+  return {
+    range: richEditorSavedRange,
+    expandedRange: richEditorSavedExpandedRange
+  };
+}
+
+function setRichEditorSavedRanges(range, expandedRange = null) {
+  richEditorSavedRange = range || null;
+  richEditorSavedExpandedRange = expandedRange || null;
+}
+
+function clearRichEditorSavedRanges() {
+  richEditorSavedRange = null;
+  richEditorSavedExpandedRange = null;
+}
 let activeRichSizeInput = null;
 let previewHotspotContext = null;
 let previewModalDragState = null;
@@ -415,88 +425,15 @@ function getViewportClampedInfoFrameSize(size) {
 }
 
 function applyRichEditorModalFrameSize(hotspot) {
-  if (!richEditorModalContent || !richEditorSurface) return;
-  if (isHomePageRichEditorMode()) {
-    const bounds = getHomePageEditorViewportBounds();
-    richEditorModal.classList.add('home-page-editor-mode');
-    richEditorModalContent.style.width = `${bounds.width}px`;
-    richEditorModalContent.style.height = `${bounds.height}px`;
-    richEditorModalContent.style.left = `${bounds.left}px`;
-    richEditorModalContent.style.top = `${bounds.top}px`;
-    hideRichModalResizeHandle();
-    return;
-  }
-  richEditorModal.classList.remove('home-page-editor-mode');
-  applyRichEditorModalResizeConstraints();
-  const desired = getViewportClampedInfoFrameSize(getInfoHotspotFrameSize(hotspot));
-  const desiredPos = getAnchoredInfoFramePosition(hotspot);
-  // Keep the actual editable area (surface) aligned with saved frame size.
-  const chromeWidth = Math.max(0, richEditorModalContent.clientWidth - richEditorSurface.clientWidth);
-  const chromeHeight = Math.max(0, richEditorModalContent.clientHeight - richEditorSurface.clientHeight);
-  richEditorModalContent.style.width = `${desired.width + chromeWidth}px`;
-  richEditorModalContent.style.height = `${desired.height + chromeHeight}px`;
-  richEditorModalContent.style.left = `${desiredPos.left}px`;
-  richEditorModalContent.style.top = `${desiredPos.top}px`;
-  clampRichEditorModalPosition();
+  runtimeRichModal?.applyFrameSize(hotspot);
 }
 
 function captureRichEditorModalFrameSize(hotspot) {
-  if (!hotspot || !richEditorSurface) return;
-  hotspot.infoFrameSize = normalizeInfoFrameSize({
-    width: richEditorSurface.clientWidth,
-    height: richEditorSurface.clientHeight
-  });
-  if (richEditorModalContent) {
-    const rect = richEditorModalContent.getBoundingClientRect();
-    const left = parsePixelStyleValue(richEditorModalContent.style.left, rect.left);
-    const top = parsePixelStyleValue(richEditorModalContent.style.top, rect.top);
-    hotspot.infoFramePosition = normalizeInfoFramePosition({ left, top });
-    hotspot.infoFrameViewport = normalizeInfoFrameViewport({
-      width: window.innerWidth,
-      height: window.innerHeight
-    });
-    const hotspotPoint = getHotspotViewportPoint(hotspot);
-    hotspot.infoFrameAnchorOffset = hotspotPoint
-      ? normalizeInfoFrameAnchorOffset({
-        offsetX: left - hotspotPoint.x,
-        offsetY: top - hotspotPoint.y
-      })
-      : null;
-  }
-}
-
-function getRichEditorContentMinSize() {
-  // Do not bind editor window minimum size to content/layout dimensions.
-  return {
-    minWidth: MIN_INFO_FRAME_WIDTH,
-    minHeight: MIN_INFO_FRAME_HEIGHT
-  };
+  runtimeRichModal?.captureFrameSize(hotspot);
 }
 
 function applyRichEditorModalResizeConstraints() {
-  if (!richEditorModalContent || !richEditorSurface) return;
-  if (isHomePageRichEditorMode()) {
-    richEditorModalContent.style.minWidth = '0px';
-    richEditorModalContent.style.minHeight = '0px';
-    return;
-  }
-  const contentMin = getRichEditorContentMinSize();
-  const chromeWidth = Math.max(0, richEditorModalContent.offsetWidth - richEditorSurface.clientWidth);
-  const chromeHeight = Math.max(0, richEditorModalContent.offsetHeight - richEditorSurface.clientHeight);
-  const minModalWidth = Math.min(MAX_INFO_FRAME_WIDTH, Math.max(MIN_INFO_FRAME_WIDTH, contentMin.minWidth + chromeWidth));
-  const minModalHeight = Math.min(MAX_INFO_FRAME_HEIGHT, Math.max(MIN_INFO_FRAME_HEIGHT, contentMin.minHeight + chromeHeight));
-
-  richEditorModalContent.style.minWidth = `${Math.round(minModalWidth)}px`;
-  richEditorModalContent.style.minHeight = `${Math.round(minModalHeight)}px`;
-
-  const currentWidth = parsePixelStyleValue(richEditorModalContent.style.width, richEditorModalContent.offsetWidth);
-  const currentHeight = parsePixelStyleValue(richEditorModalContent.style.height, richEditorModalContent.offsetHeight);
-  if (Number.isFinite(currentWidth) && currentWidth < minModalWidth) {
-    richEditorModalContent.style.width = `${Math.round(minModalWidth)}px`;
-  }
-  if (Number.isFinite(currentHeight) && currentHeight < minModalHeight) {
-    richEditorModalContent.style.height = `${Math.round(minModalHeight)}px`;
-  }
+  runtimeRichModal?.applyResizeConstraints();
 }
 
 function parsePixelStyleValue(value, fallback) {
@@ -505,154 +442,33 @@ function parsePixelStyleValue(value, fallback) {
 }
 
 function clampRichEditorModalPosition() {
-  if (!richEditorModalContent) return;
-  if (isHomePageRichEditorMode()) {
-    richEditorModalContent.style.left = '0px';
-    richEditorModalContent.style.top = '0px';
-    hideRichModalResizeHandle();
-    return;
-  }
-  const rect = richEditorModalContent.getBoundingClientRect();
-  const maxLeft = Math.max(0, window.innerWidth - rect.width - 8);
-  const maxTop = Math.max(0, window.innerHeight - rect.height - 8);
-  const currentLeft = parsePixelStyleValue(richEditorModalContent.style.left, rect.left);
-  const currentTop = parsePixelStyleValue(richEditorModalContent.style.top, rect.top);
-  const nextLeft = Math.min(maxLeft, Math.max(8, currentLeft));
-  const nextTop = Math.min(maxTop, Math.max(8, currentTop));
-  richEditorModalContent.style.left = `${Math.round(nextLeft)}px`;
-  richEditorModalContent.style.top = `${Math.round(nextTop)}px`;
-  updateRichModalResizeHandle();
+  runtimeRichModal?.clampPosition();
 }
 
 function ensureRichModalResizeHandle() {
-  if (richModalResizeHandleEl) return richModalResizeHandleEl;
-  const handle = document.createElement('div');
-  handle.className = 'rich-modal-resize-handle hidden';
-  handle.title = 'Drag to resize visual editor';
-  handle.addEventListener('pointerdown', startRichModalResize);
-  document.body.appendChild(handle);
-  richModalResizeHandleEl = handle;
-  return richModalResizeHandleEl;
+  return runtimeRichModal?.ensureResizeHandle() || null;
 }
 
 function hideRichModalResizeHandle() {
-  if (!richModalResizeHandleEl) return;
-  richModalResizeHandleEl.classList.add('hidden');
+  runtimeRichModal?.hideResizeHandle();
 }
 
 function updateRichModalResizeHandle() {
-  if (!richEditorModal?.classList.contains('visible') || !richEditorModalContent) {
-    hideRichModalResizeHandle();
-    return;
-  }
-  if (isHomePageRichEditorMode()) {
-    hideRichModalResizeHandle();
-    return;
-  }
-  const rect = richEditorModalContent.getBoundingClientRect();
-  if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(rect.height) || rect.height <= 0) {
-    hideRichModalResizeHandle();
-    return;
-  }
-  const handle = ensureRichModalResizeHandle();
-  handle.style.left = `${Math.round(rect.right)}px`;
-  handle.style.top = `${Math.round(rect.bottom)}px`;
-  handle.classList.remove('hidden');
+  runtimeRichModal?.updateResizeHandle();
 }
 
 function stopRichModalResize() {
-  if (!richModalResizeState) return;
-  richModalResizeState = null;
-  window.removeEventListener('pointermove', handleRichModalResizeMove);
-  window.removeEventListener('pointerup', stopRichModalResize);
-  window.removeEventListener('pointercancel', stopRichModalResize);
-}
-
-function handleRichModalResizeMove(event) {
-  if (!richModalResizeState || !richEditorModalContent) {
-    stopRichModalResize();
-    return;
-  }
-  const computed = window.getComputedStyle(richEditorModalContent);
-  const minWidth = parsePixelStyleValue(computed.minWidth, MIN_INFO_FRAME_WIDTH);
-  const minHeight = parsePixelStyleValue(computed.minHeight, MIN_INFO_FRAME_HEIGHT);
-  const maxWidth = Math.max(minWidth, Math.min(MAX_INFO_FRAME_WIDTH, window.innerWidth - richModalResizeState.left - 8));
-  const maxHeight = Math.max(minHeight, Math.min(MAX_INFO_FRAME_HEIGHT, window.innerHeight - richModalResizeState.top - 8));
-  const deltaX = event.clientX - richModalResizeState.startX;
-  const deltaY = event.clientY - richModalResizeState.startY;
-  const nextWidth = Math.round(Math.min(maxWidth, Math.max(minWidth, richModalResizeState.startWidth + deltaX)));
-  const nextHeight = Math.round(Math.min(maxHeight, Math.max(minHeight, richModalResizeState.startHeight + deltaY)));
-  richEditorModalContent.style.width = `${nextWidth}px`;
-  richEditorModalContent.style.height = `${nextHeight}px`;
-  updateRichModalResizeHandle();
-}
-
-function startRichModalResize(event) {
-  if (!richEditorModalContent || !richEditorModal?.classList.contains('visible')) return;
-  if (isHomePageRichEditorMode()) return;
-  event.preventDefault();
-  event.stopPropagation();
-  applyRichEditorModalResizeConstraints();
-  const rect = richEditorModalContent.getBoundingClientRect();
-  richModalResizeState = {
-    startX: event.clientX,
-    startY: event.clientY,
-    startWidth: rect.width,
-    startHeight: rect.height,
-    left: rect.left,
-    top: rect.top
-  };
-  window.addEventListener('pointermove', handleRichModalResizeMove);
-  window.addEventListener('pointerup', stopRichModalResize);
-  window.addEventListener('pointercancel', stopRichModalResize);
+  runtimeRichModal?.stopResize();
 }
 
 function stopRichEditorDrag() {
-  if (!richEditorDragState) return;
-  richEditorDragState = null;
-  richEditorSurface?.classList.remove('dragging');
-  richEditorSurface?.classList.remove('drag-zone');
-  window.removeEventListener('pointermove', handleRichEditorDragMove);
-  window.removeEventListener('pointerup', stopRichEditorDrag);
-  window.removeEventListener('pointercancel', stopRichEditorDrag);
-}
-
-function handleRichEditorDragMove(event) {
-  if (!richEditorDragState || !richEditorModalContent) return;
-  const deltaX = event.clientX - richEditorDragState.startX;
-  const deltaY = event.clientY - richEditorDragState.startY;
-  const width = richEditorModalContent.offsetWidth || 0;
-  const height = richEditorModalContent.offsetHeight || 0;
-  const maxLeft = Math.max(0, window.innerWidth - width - 8);
-  const maxTop = Math.max(0, window.innerHeight - height - 8);
-  const nextLeft = Math.min(maxLeft, Math.max(8, richEditorDragState.startLeft + deltaX));
-  const nextTop = Math.min(maxTop, Math.max(8, richEditorDragState.startTop + deltaY));
-  richEditorModalContent.style.left = `${Math.round(nextLeft)}px`;
-  richEditorModalContent.style.top = `${Math.round(nextTop)}px`;
-  updateRichModalResizeHandle();
+  runtimeRichModal?.stopDrag();
 }
 
 function maybeStartRichEditorDrag(event) {
-  if (!richEditorModalContent || !richEditorSurface || event.button !== 0) return false;
-  if (isHomePageRichEditorMode()) return false;
-  if (!(event.target instanceof Element) || event.target !== richEditorSurface) return false;
-  const rect = richEditorSurface.getBoundingClientRect();
-  const withinHandleZone = (event.clientY - rect.top) <= 18;
-  if (!withinHandleZone) return false;
-  const modalRect = richEditorModalContent.getBoundingClientRect();
-  richEditorDragState = {
-    startX: event.clientX,
-    startY: event.clientY,
-    startLeft: modalRect.left,
-    startTop: modalRect.top
-  };
-  richEditorSurface.classList.add('dragging');
-  event.preventDefault();
-  window.addEventListener('pointermove', handleRichEditorDragMove);
-  window.addEventListener('pointerup', stopRichEditorDrag);
-  window.addEventListener('pointercancel', stopRichEditorDrag);
-  return true;
+  return runtimeRichModal?.maybeStartDrag(event) || false;
 }
+
 
 function persistPreviewModalFramePosition() {
   const hotspot = getInfoHotspotByContext(previewHotspotContext);
@@ -841,122 +657,63 @@ function sanitizeRichParagraphSpacingValue(value) {
 }
 
 function applyRichFontSizeInSelection(sizeValue) {
-  if (!richEditorSurface) return false;
-  const safeSize = sanitizeRichFontSizeValue(sizeValue);
-  if (!safeSize) return false;
-  const baseRange =
-    (richEditorSavedRange && isRangeInsideRichEditor(richEditorSavedRange))
-      ? richEditorSavedRange.cloneRange()
-      : null;
-  if (!baseRange) return false;
-  const selection = window.getSelection();
-  const preserveInputFocus = document.activeElement === activeRichSizeInput;
-  if (baseRange.collapsed) {
-    const span = document.createElement('span');
-    span.style.fontSize = safeSize;
-    const placeholder = document.createTextNode('\u200b');
-    span.appendChild(placeholder);
-    baseRange.insertNode(span);
-    const nextRange = document.createRange();
-    nextRange.setStart(placeholder, 1);
-    nextRange.collapse(true);
-    richEditorSavedRange = nextRange.cloneRange();
-    richEditorSavedExpandedRange = null;
-    if (!preserveInputFocus && selection) {
-      selection.removeAllRanges();
-      selection.addRange(nextRange);
-    }
-    return true;
+  const applied = runtimeRichTypography?.applyFontSizeInSelection(sizeValue) || false;
+  if (applied) {
+    syncAutoRichLayoutHeights();
   }
-  const span = document.createElement('span');
-  span.style.fontSize = safeSize;
-  const fragment = baseRange.extractContents();
-  span.appendChild(fragment);
-  baseRange.insertNode(span);
-  const nextRange = document.createRange();
-  nextRange.selectNodeContents(span);
-  richEditorSavedRange = nextRange.cloneRange();
-  richEditorSavedExpandedRange = nextRange.cloneRange();
-  if (!preserveInputFocus && selection) {
-    selection.removeAllRanges();
-    selection.addRange(nextRange);
+  return applied;
+}
+
+function applyRichLineHeightInSelection(lineHeightValue) {
+  const applied = runtimeRichTypography?.applyLineHeightInSelection(lineHeightValue) || false;
+  if (applied) {
+    syncAutoRichLayoutHeights();
   }
-  return true;
+  return applied;
+}
+
+function applyRichParagraphSpacingInSelection(spacingValue) {
+  const applied = runtimeRichTypography?.applyParagraphSpacingInSelection(spacingValue) || false;
+  if (applied) {
+    syncAutoRichLayoutHeights();
+  }
+  return applied;
 }
 
 function getRichBlockNodeForSelection(node) {
   if (!node || !richEditorSurface) return null;
   let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   while (current && current !== richEditorSurface) {
-    if (current.matches?.('p,div,li,td,th,h1,h2,h3,h4')) return current;
+    if (current.matches?.('p,li,td,th,h1,h2,h3,h4')) return current;
+    if (
+      current.matches?.('div') &&
+      !current.hasAttribute('data-col') &&
+      !current.hasAttribute('data-layout')
+    ) {
+      return current;
+    }
     current = current.parentElement;
   }
   return null;
 }
 
-function applyRichLineHeightInSelection(lineHeightValue) {
-  const safeValue = sanitizeRichLineHeightValue(lineHeightValue);
-  if (!safeValue || !restoreRichEditorSelectionRange()) return false;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return false;
-  const range = selection.getRangeAt(0);
-  if (!isRangeInsideRichEditor(range)) return false;
-
-  const blockNodes = new Set();
-  const startBlock = getRichBlockNodeForSelection(range.startContainer);
-  const endBlock = getRichBlockNodeForSelection(range.endContainer);
-  if (startBlock) blockNodes.add(startBlock);
-  if (endBlock) blockNodes.add(endBlock);
-
-  if (blockNodes.size === 0) {
-    const span = document.createElement('span');
-    span.style.lineHeight = safeValue;
-    if (range.collapsed) {
-      span.innerHTML = '<br>';
-      range.insertNode(span);
-      range.selectNodeContents(span);
-      range.collapse(false);
-    } else {
-      const fragment = range.extractContents();
-      span.appendChild(fragment);
-      range.insertNode(span);
-      range.selectNodeContents(span);
-    }
-    selection.removeAllRanges();
-    selection.addRange(range);
-    richEditorSavedRange = range.cloneRange();
-    return true;
+function syncAutoRichLayoutHeights() {
+  if (!richEditorSurface) return;
+  const activeLayout = getSelectedRichLayoutElement();
+  if (activeLayout instanceof HTMLElement && activeLayout.dataset.heightLocked === 'true') {
+    activeLayout.removeAttribute('data-height-locked');
+    activeLayout.style.removeProperty('height');
+    activeLayout.style.removeProperty('min-height');
   }
-
-  blockNodes.forEach((block) => {
-    block.style.lineHeight = safeValue;
+  richEditorSurface.querySelectorAll('[data-layout^="columns-"]').forEach((layout) => {
+    if (!(layout instanceof HTMLElement)) return;
+    if (layout.dataset.heightLocked === 'true') return;
+    layout.style.removeProperty('height');
+    layout.style.removeProperty('min-height');
   });
-  richEditorSavedRange = range.cloneRange();
-  return true;
+  updateRichLayoutBlockResizeHandle();
 }
 
-function applyRichParagraphSpacingInSelection(spacingValue) {
-  const safeValue = sanitizeRichParagraphSpacingValue(spacingValue);
-  if (!safeValue || !restoreRichEditorSelectionRange()) return false;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return false;
-  const range = selection.getRangeAt(0);
-  if (!isRangeInsideRichEditor(range)) return false;
-
-  const blockNodes = new Set();
-  const startBlock = getRichBlockNodeForSelection(range.startContainer);
-  const endBlock = getRichBlockNodeForSelection(range.endContainer);
-  if (startBlock) blockNodes.add(startBlock);
-  if (endBlock) blockNodes.add(endBlock);
-  if (blockNodes.size === 0) return false;
-
-  blockNodes.forEach((block) => {
-    block.style.marginTop = '0';
-    block.style.marginBottom = safeValue;
-  });
-  richEditorSavedRange = range.cloneRange();
-  return true;
-}
 
 function getClosestRichColumn(startNode) {
   if (!startNode || !richEditorSurface) return null;
@@ -1276,6 +1033,7 @@ function sanitizeRichHtml(rawHtml) {
       if (tag === 'div') {
         const layout = String(originalAttrs['data-layout'] || '').trim().toLowerCase();
         const col = Number.parseInt(String(originalAttrs['data-col'] || '').trim(), 10);
+        const savedHeightLocked = String(originalAttrs['data-height-locked'] || '').trim().toLowerCase() === 'true';
         const styleValue = String(originalAttrs.style || '');
         const savedColWidths = String(originalAttrs['data-col-widths'] || '').trim();
         const savedBlockAlignRaw = String(originalAttrs['data-block-align'] || '').trim().toLowerCase();
@@ -1305,11 +1063,14 @@ function sanitizeRichHtml(rawHtml) {
           if (requestedWidth) {
             node.style.width = requestedWidth;
           }
-          if (requestedHeight) {
+          if (savedHeightLocked && requestedHeight) {
             node.style.height = requestedHeight;
           }
-          if (requestedMinHeight) {
+          if (savedHeightLocked && requestedMinHeight) {
             node.style.minHeight = requestedMinHeight;
+          }
+          if (savedHeightLocked) {
+            node.setAttribute('data-height-locked', 'true');
           }
           let blockAlign = 'left';
           if (savedBlockAlignRaw === 'center' || savedBlockAlignRaw === 'right' || savedBlockAlignRaw === 'left') {
@@ -1681,6 +1442,27 @@ function getHomePageEditorViewportBounds() {
   };
 }
 
+runtimeRichModal = window.IterpanoEditorRichModal?.createRichModalController({
+  richEditorModal,
+  richEditorModalContent,
+  richEditorSurface,
+  isHomePageRichEditorMode,
+  getHomePageEditorViewportBounds,
+  getViewportClampedInfoFrameSize,
+  getAnchoredInfoFramePosition,
+  getInfoHotspotFrameSize,
+  getHotspotViewportPoint,
+  parsePixelStyleValue,
+  normalizeInfoFrameSize,
+  normalizeInfoFramePosition,
+  normalizeInfoFrameViewport,
+  normalizeInfoFrameAnchorOffset,
+  minInfoFrameWidth: MIN_INFO_FRAME_WIDTH,
+  minInfoFrameHeight: MIN_INFO_FRAME_HEIGHT,
+  maxInfoFrameWidth: MAX_INFO_FRAME_WIDTH,
+  maxInfoFrameHeight: MAX_INFO_FRAME_HEIGHT
+});
+
 function getRichContentTargetByContext(context) {
   if (!context) return null;
   if (context.type === 'home-page') {
@@ -1802,21 +1584,7 @@ function isRangeInsideRichEditor(range) {
 }
 
 function saveRichEditorSelectionRange() {
-  if (!richEditorSurface) return;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return;
-  }
-  const range = selection.getRangeAt(0);
-  if (!isRangeInsideRichEditor(range)) {
-    return;
-  }
-  richEditorSavedRange = range.cloneRange();
-  if (!range.collapsed) {
-    richEditorSavedExpandedRange = range.cloneRange();
-  } else {
-    richEditorSavedExpandedRange = null;
-  }
+  runtimeRichTypography?.saveSelectionRange();
 }
 
 function normalizeSelectionFontSizeToInput(fontSizeValue) {
@@ -1878,32 +1646,13 @@ function getSelectionFontSizeForActiveEditor() {
 }
 
 function syncRichEditorTypographyControls(options = {}) {
-  if (!activeRichSizeInput) return;
-  const force = Boolean(options?.force);
-  if (!force && document.activeElement === activeRichSizeInput) return;
-  const nextSize = getSelectionFontSizeForActiveEditor();
-  activeRichSizeInput.value = nextSize;
+  runtimeRichTypography?.syncTypographyControls(options);
 }
 
 function restoreRichEditorSelectionRange(options = {}) {
-  if (!richEditorSurface) return false;
-  const preferExpanded = Boolean(options?.preferExpanded);
-  let targetRange = preferExpanded
-    ? (richEditorSavedExpandedRange || richEditorSavedRange)
-    : (richEditorSavedRange || richEditorSavedExpandedRange);
-  if (!targetRange) return false;
-  if (!isRangeInsideRichEditor(targetRange)) {
-    richEditorSavedRange = null;
-    richEditorSavedExpandedRange = null;
-    return false;
-  }
-  const selection = window.getSelection();
-  if (!selection) return false;
-  richEditorSurface.focus({ preventScroll: true });
-  selection.removeAllRanges();
-  selection.addRange(targetRange.cloneRange());
-  return true;
+  return runtimeRichTypography?.restoreSelectionRange(options) || false;
 }
+
 
 function normalizeRichLayoutColumns(value, fallback = 2) {
   const parsed = Number.parseInt(value, 10);
@@ -2018,32 +1767,13 @@ function findClosestRichLayout(startNode) {
 }
 
 function getSelectedRichLayoutElement() {
-  if (
-    selectedRichLayoutElement &&
-    richEditorSurface &&
-    richEditorSurface.contains(selectedRichLayoutElement)
-  ) {
-    return selectedRichLayoutElement;
-  }
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  return findClosestRichLayout(selection.anchorNode);
+  return runtimeRichSelection?.getSelectedLayoutElement() || null;
 }
 
 function setSelectedRichLayoutElement(layoutEl) {
-  if (selectedRichLayoutElement && selectedRichLayoutElement !== layoutEl) {
-    selectedRichLayoutElement.classList.remove('rich-layout-selected');
-  }
-  selectedRichLayoutElement = layoutEl || null;
-  if (selectedRichLayoutElement) {
-    selectedRichLayoutElement.classList.add('rich-layout-selected');
-  }
-  if (!selectedRichLayoutElement) {
-    hideRichLayoutBlockResizeHandle();
-  } else {
-    updateRichLayoutBlockResizeHandle();
-  }
+  runtimeRichSelection?.setSelectedLayoutElement(layoutEl);
 }
+
 
 function renumberRichLayoutColumns(layoutEl) {
   if (!layoutEl) return;
@@ -2105,401 +1835,89 @@ function getRichLayoutDirectColumns(layoutEl) {
   return Array.from(layoutEl.querySelectorAll(':scope > [data-col]')).filter((column) => column instanceof Element);
 }
 
-function stopRichLayoutResize() {
-  if (!richLayoutResizeState) return;
-  richLayoutResizeState = null;
-  window.removeEventListener('pointermove', handleRichLayoutResizeMove);
-  window.removeEventListener('pointerup', stopRichLayoutResize);
-  window.removeEventListener('pointercancel', stopRichLayoutResize);
-  applyRichEditorModalResizeConstraints();
-}
+runtimeRichLayout = window.IterpanoEditorRichLayout?.createRichLayoutController({
+  richEditorModal,
+  richEditorSurface,
+  parsePixelStyleValue,
+  applyRichEditorModalResizeConstraints,
+  applyRichLayoutColumnWidths,
+  getRichLayoutDirectColumns,
+  getSelectedRichLayoutElement,
+  richLayoutColumnMinWidth: RICH_LAYOUT_COLUMN_MIN_WIDTH
+});
 
-function handleRichLayoutResizeMove(event) {
-  if (!richLayoutResizeState?.layout?.isConnected) {
-    stopRichLayoutResize();
-    return;
-  }
-  const {
-    layout,
-    index,
-    mode,
-    startX,
-    startWidths,
-    minWidth
-  } = richLayoutResizeState;
-  const currentRect = layout.getBoundingClientRect();
-  const preservedHeight = Math.max(
-    40,
-    Math.round(parsePixelStyleValue(layout.style.height, currentRect.height))
-  );
-  const delta = event.clientX - startX;
-  let resizedColumnWidth = startWidths[index] + delta;
-  if (resizedColumnWidth < minWidth) {
-    resizedColumnWidth = minWidth;
-  }
-  const nextWidths = [...startWidths];
-  nextWidths[index] = Math.max(minWidth, resizedColumnWidth);
-  // Internal divider resize changes only selected column width.
-  // External right-edge resize (last column) explicitly controls last column width.
-  if (mode === 'last-edge') {
-    nextWidths[index] = Math.max(minWidth, resizedColumnWidth);
-  }
-  const layoutComputed = window.getComputedStyle(layout);
-  const gap = Number.parseFloat(layoutComputed.columnGap || layoutComputed.gap || '12') || 12;
-  const nextLayoutWidth =
-    nextWidths.reduce((sum, width) => sum + Math.max(minWidth, width), 0)
-    + (Math.max(0, nextWidths.length - 1) * gap);
-  layout.style.width = `${Math.round(Math.max(180, nextLayoutWidth))}px`;
-  applyRichLayoutColumnWidths(layout, nextWidths);
-  layout.style.height = `${preservedHeight}px`;
-  updateRichLayoutBlockResizeHandle();
+runtimeRichSelection = window.IterpanoEditorRichSelection?.createRichSelectionController({
+  richEditorModal,
+  richEditorSurface,
+  syncRichEditorTypographyControls,
+  applyRichEditorModalResizeConstraints,
+  findClosestRichLayout,
+  updateRichLayoutBlockResizeHandle,
+  hideRichLayoutBlockResizeHandle
+});
+
+runtimeRichTypography = window.IterpanoEditorRichTypography?.createRichTypographyController({
+  richEditorSurface,
+  getActiveRichSizeInput: () => activeRichSizeInput,
+  isRangeInsideRichEditor,
+  sanitizeRichFontSizeValue,
+  sanitizeRichLineHeightValue,
+  sanitizeRichParagraphSpacingValue,
+  getRichBlockNodeForSelection,
+  getSavedRanges: getRichEditorSavedRanges,
+  setSavedRanges: setRichEditorSavedRanges,
+  clearSavedRanges: clearRichEditorSavedRanges
+});
+
+function stopRichLayoutResize() {
+  runtimeRichLayout?.stopResize();
 }
 
 function maybeStartRichLayoutResize(event) {
-  if (!richEditorSurface || event.button !== 0) return false;
-  const target =
-    event.target instanceof Element
-      ? event.target
-      : document.elementFromPoint(event.clientX, event.clientY);
-  const column = target?.closest('[data-col]');
-  if (!column || !richEditorSurface.contains(column)) return false;
-  const layout = column.parentElement;
-  if (!layout || !String(layout.getAttribute('data-layout') || '').startsWith('columns-')) return false;
-  const columns = getRichLayoutDirectColumns(layout);
-  const index = columns.indexOf(column);
-  if (index < 0) return false;
-  const rect = column.getBoundingClientRect();
-  const edgeThreshold = 12;
-  const nearRightEdge = (rect.right - event.clientX) <= edgeThreshold;
-  const nearLeftEdge = (event.clientX - rect.left) <= edgeThreshold;
-
-  let boundaryIndex = -1;
-  let resizeMode = 'divider';
-  if (nearRightEdge && index < columns.length - 1) {
-    boundaryIndex = index;
-  } else if (nearLeftEdge && index > 0) {
-    boundaryIndex = index - 1;
-  } else if (nearRightEdge && index === columns.length - 1) {
-    // Right edge of last column: direct width control of the last column.
-    boundaryIndex = index;
-    resizeMode = 'last-edge';
-  } else {
-    return false;
-  }
-
-  const startWidths = columns.map((col) => col.getBoundingClientRect().width);
-  richLayoutResizeState = {
-    layout,
-    index: boundaryIndex,
-    mode: resizeMode,
-    startX: event.clientX,
-    startWidths,
-    minWidth: RICH_LAYOUT_COLUMN_MIN_WIDTH
-  };
-  event.preventDefault();
-  event.stopPropagation();
-  window.addEventListener('pointermove', handleRichLayoutResizeMove);
-  window.addEventListener('pointerup', stopRichLayoutResize);
-  window.addEventListener('pointercancel', stopRichLayoutResize);
-  return true;
-}
-
-function ensureRichLayoutBlockResizeHandles() {
-  if (!richLayoutBlockResizeHandleHeightEl) {
-    const heightHandle = document.createElement('div');
-    heightHandle.className = 'rich-layout-resize-handle rich-layout-resize-height hidden';
-    heightHandle.title = 'Drag to resize columns block height';
-    heightHandle.addEventListener('pointerdown', startRichLayoutBlockResize);
-    document.body.appendChild(heightHandle);
-    richLayoutBlockResizeHandleHeightEl = heightHandle;
-  }
-  return richLayoutBlockResizeHandleHeightEl;
+  return runtimeRichLayout?.maybeStartResize(event) || false;
 }
 
 function hideRichLayoutBlockResizeHandle() {
-  if (richLayoutBlockResizeHandleHeightEl) {
-    richLayoutBlockResizeHandleHeightEl.classList.add('hidden');
-  }
+  runtimeRichLayout?.hideBlockResizeHandle();
 }
 
 function updateRichLayoutBlockResizeHandle() {
-  if (!richEditorModal?.classList.contains('visible')) {
-    hideRichLayoutBlockResizeHandle();
-    return;
-  }
-  const layout = getSelectedRichLayoutElement();
-  if (!layout || !layout.isConnected) {
-    hideRichLayoutBlockResizeHandle();
-    return;
-  }
-  const rect = layout.getBoundingClientRect();
-  if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(rect.height) || rect.height <= 0) {
-    hideRichLayoutBlockResizeHandle();
-    return;
-  }
-  const heightHandle = ensureRichLayoutBlockResizeHandles();
-  heightHandle.style.left = `${Math.round(rect.left + (rect.width / 2))}px`;
-  heightHandle.style.top = `${Math.round(rect.bottom)}px`;
-  heightHandle.classList.remove('hidden');
+  runtimeRichLayout?.updateBlockResizeHandle();
 }
 
 function stopRichLayoutBlockResize() {
-  if (!richLayoutBlockResizeState) return;
-  richLayoutBlockResizeState = null;
-  window.removeEventListener('pointermove', handleRichLayoutBlockResizeMove);
-  window.removeEventListener('pointerup', stopRichLayoutBlockResize);
-  window.removeEventListener('pointercancel', stopRichLayoutBlockResize);
-  applyRichEditorModalResizeConstraints();
+  runtimeRichLayout?.stopBlockResize();
 }
 
-function measureRichLayoutNaturalHeight(layout, widthPx) {
-  if (!layout?.isConnected) return 40;
-  const previousWidth = layout.style.width;
-  const previousHeight = layout.style.height;
-  const previousMinHeight = layout.style.minHeight;
-  layout.style.width = `${Math.round(widthPx)}px`;
-  layout.style.height = 'auto';
-  layout.style.minHeight = '0px';
-  const rect = layout.getBoundingClientRect();
-  const measured = Number.isFinite(rect.height) ? rect.height : 0;
-  const scrollMeasured = Math.max(0, layout.scrollHeight || 0);
-  const natural = Math.ceil(Math.max(measured, scrollMeasured, 40));
-  layout.style.width = previousWidth;
-  layout.style.height = previousHeight;
-  layout.style.minHeight = previousMinHeight;
-  return natural;
-}
-
-function findWidthForTargetRichLayoutHeight(layout, targetHeight, minWidth, maxWidth) {
-  const lowStart = Math.max(minWidth, 180);
-  const highStart = Math.max(lowStart, maxWidth);
-  const currentRect = layout.getBoundingClientRect();
-  const currentWidth = Math.round(currentRect.width);
-  const currentNatural = measureRichLayoutNaturalHeight(layout, currentWidth);
-  if (currentNatural <= targetHeight) {
-    return { width: currentWidth, height: targetHeight };
-  }
-  const highNatural = measureRichLayoutNaturalHeight(layout, highStart);
-  if (highNatural > targetHeight) {
-    return { width: highStart, height: highNatural };
-  }
-
-  let low = Math.max(currentWidth, lowStart);
-  let high = highStart;
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    const naturalAtMid = measureRichLayoutNaturalHeight(layout, mid);
-    if (naturalAtMid <= targetHeight) {
-      high = mid;
-    } else {
-      low = mid + 1;
-    }
-  }
-  return { width: low, height: targetHeight };
-}
-
-function handleRichLayoutBlockResizeMove(event) {
-  if (!richLayoutBlockResizeState?.layout?.isConnected) {
-    stopRichLayoutBlockResize();
-    hideRichLayoutBlockResizeHandle();
-    return;
-  }
-  const { layout, startY, startHeight } = richLayoutBlockResizeState;
-  const deltaY = event.clientY - startY;
-  const nextHeight = Math.round(Math.min(1600, Math.max(40, startHeight + deltaY)));
-  const fitted = findWidthForTargetRichLayoutHeight(layout, nextHeight, 180, 2200);
-  layout.style.width = `${Math.round(Math.max(180, fitted.width))}px`;
-  layout.style.height = `${Math.round(Math.max(40, fitted.height))}px`;
-  updateRichLayoutBlockResizeHandle();
-}
-
-function startRichLayoutBlockResize(event) {
-  const layout = getSelectedRichLayoutElement();
-  if (!layout) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const rect = layout.getBoundingClientRect();
-  const currentHeight = parsePixelStyleValue(layout.style.height, rect.height);
-  layout.style.width = `${Math.round(rect.width)}px`;
-  if (currentHeight > 0) {
-    layout.style.height = `${Math.round(currentHeight)}px`;
-  }
-  richLayoutBlockResizeState = {
-    layout,
-    startY: event.clientY,
-    startWidth: rect.width,
-    startHeight: currentHeight
-  };
-  window.addEventListener('pointermove', handleRichLayoutBlockResizeMove);
-  window.addEventListener('pointerup', stopRichLayoutBlockResize);
-  window.addEventListener('pointercancel', stopRichLayoutBlockResize);
-}
 
 function syncRichEditorSelectionState() {
-  if (!richEditorSurface) return;
-
-  if (
-    selectedRichImageElement &&
-    (!richEditorSurface.contains(selectedRichImageElement) || !selectedRichImageElement.isConnected)
-  ) {
-    setSelectedRichImageElement(null);
-  } else {
-    const currentImage = getSelectedRichImageElement();
-    if (currentImage !== selectedRichImageElement) {
-      setSelectedRichImageElement(currentImage);
-    } else {
-      updateRichImageResizeHandle();
-    }
-  }
-
-  if (
-    selectedRichLayoutElement &&
-    (!richEditorSurface.contains(selectedRichLayoutElement) || !selectedRichLayoutElement.isConnected)
-  ) {
-    setSelectedRichLayoutElement(null);
-  } else {
-    const currentLayout = getSelectedRichLayoutElement();
-    if (currentLayout !== selectedRichLayoutElement) {
-      setSelectedRichLayoutElement(currentLayout);
-    } else {
-      updateRichLayoutBlockResizeHandle();
-    }
-  }
-  applyRichEditorModalResizeConstraints();
-  syncRichEditorTypographyControls();
+  runtimeRichSelection?.syncSelectionState();
 }
 
 function ensureRichImageResizeHandle() {
-  if (richImageResizeHandleEl) return richImageResizeHandleEl;
-  const handle = document.createElement('div');
-  handle.className = 'rich-image-resize-handle hidden';
-  handle.title = 'Drag to resize media';
-  handle.addEventListener('pointerdown', startRichImageResize);
-  document.body.appendChild(handle);
-  richImageResizeHandleEl = handle;
-  return richImageResizeHandleEl;
+  return runtimeRichSelection?.ensureImageResizeHandle() || null;
 }
 
 function hideRichImageResizeHandle() {
-  if (!richImageResizeHandleEl) return;
-  richImageResizeHandleEl.classList.add('hidden');
+  runtimeRichSelection?.hideImageResizeHandle();
 }
 
 function updateRichImageResizeHandle() {
-  if (!richEditorModal?.classList.contains('visible')) {
-    hideRichImageResizeHandle();
-    return;
-  }
-  const media = getSelectedRichImageElement();
-  if (!media || !media.isConnected) {
-    hideRichImageResizeHandle();
-    return;
-  }
-  const rect = media.getBoundingClientRect();
-  if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(rect.height) || rect.height <= 0) {
-    hideRichImageResizeHandle();
-    return;
-  }
-  const handle = ensureRichImageResizeHandle();
-  handle.style.left = `${Math.round(rect.right)}px`;
-  handle.style.top = `${Math.round(rect.bottom)}px`;
-  handle.classList.remove('hidden');
+  runtimeRichSelection?.updateRichImageResizeHandle();
 }
 
 function stopRichImageResize() {
-  if (!richImageResizeState) return;
-  richImageResizeState = null;
-  window.removeEventListener('pointermove', handleRichImageResizeMove);
-  window.removeEventListener('pointerup', stopRichImageResize);
-  window.removeEventListener('pointercancel', stopRichImageResize);
-}
-
-function handleRichImageResizeMove(event) {
-  if (!richImageResizeState?.media?.isConnected) {
-    stopRichImageResize();
-    hideRichImageResizeHandle();
-    return;
-  }
-  const deltaX = event.clientX - richImageResizeState.startX;
-  const nextWidth = Math.round(Math.min(
-    richImageResizeState.maxWidth,
-    Math.max(richImageResizeState.minWidth, richImageResizeState.startWidth + deltaX)
-  ));
-  richImageResizeState.media.style.width = `${nextWidth}px`;
-  if (richImageResizeState.keepAspectRatio) {
-    const nextHeight = Math.round(Math.max(24, nextWidth * richImageResizeState.aspectRatio));
-    richImageResizeState.media.style.height = `${nextHeight}px`;
-  } else {
-    richImageResizeState.media.style.height = 'auto';
-  }
-  updateRichImageResizeHandle();
-}
-
-function startRichImageResize(event) {
-  const media = getSelectedRichImageElement();
-  if (!media) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const rect = media.getBoundingClientRect();
-  const tagName = String(media.tagName || '').toLowerCase();
-  const keepAspectRatio = tagName === 'video' || tagName === 'iframe';
-  const width = Math.max(24, Math.round(rect.width));
-  const height = Math.max(24, Math.round(rect.height));
-  const aspectRatio = height / Math.max(1, width);
-  // Freeze current rendered size before resizing.
-  media.style.width = `${width}px`;
-  media.style.removeProperty('max-height');
-  media.style.height = keepAspectRatio ? `${height}px` : 'auto';
-  richImageResizeState = {
-    media,
-    startX: event.clientX,
-    startWidth: rect.width,
-    aspectRatio,
-    keepAspectRatio,
-    minWidth: 24,
-    maxWidth: 4096
-  };
-  window.addEventListener('pointermove', handleRichImageResizeMove);
-  window.addEventListener('pointerup', stopRichImageResize);
-  window.addEventListener('pointercancel', stopRichImageResize);
+  runtimeRichSelection?.stopImageResize();
 }
 
 function setSelectedRichImageElement(imageEl) {
-  if (selectedRichImageElement && selectedRichImageElement !== imageEl) {
-    selectedRichImageElement.classList.remove('rich-image-selected', 'rich-media-selected');
-  }
-  selectedRichImageElement = imageEl || null;
-  if (selectedRichImageElement) {
-    selectedRichImageElement.classList.add('rich-media-selected');
-    if (selectedRichImageElement.tagName.toLowerCase() === 'img') {
-      selectedRichImageElement.classList.add('rich-image-selected');
-    }
-  }
-  updateRichImageResizeHandle();
+  runtimeRichSelection?.setSelectedImageElement(imageEl);
 }
 
 function getSelectedRichImageElement() {
-  if (
-    selectedRichImageElement &&
-    richEditorSurface &&
-    richEditorSurface.contains(selectedRichImageElement)
-  ) {
-    return selectedRichImageElement;
-  }
-  if (!richEditorSurface) return null;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  let node = selection.anchorNode;
-  if (!node) return null;
-  if (node.nodeType === Node.TEXT_NODE) {
-    node = node.parentElement;
-  }
-  if (!(node instanceof Element)) return null;
-  const media = node.closest('img,video,iframe');
-  if (!media) return null;
-  if (!richEditorSurface.contains(media)) return null;
-  return media;
+  return runtimeRichSelection?.getSelectedImageElement() || null;
 }
+
 
 function applyRichMediaAlignment(mediaEl, align = 'left') {
   if (!(mediaEl instanceof HTMLElement)) return false;
@@ -2560,7 +1978,7 @@ function buildRichColumnsHtml(columnCount = 2) {
   const columnsHtml = [];
   for (let index = 1; index <= safeCols; index += 1) {
     columnsHtml.push(
-      `<div data-col="${index}"><p><strong>Column ${index}</strong></p><p><br></p></div>`
+      `<div data-col="${index}"><p><br></p></div>`
     );
   }
   return `<div data-layout="columns-${safeCols}" data-col-widths="${serializeRichLayoutWeights(defaultWeights)}" style="grid-template-columns:${defaultTemplate};width:${defaultWidth};gap:${DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX}px;">${columnsHtml.join('')}</div><p><br></p>`;
@@ -2700,8 +2118,9 @@ function freezeRichLayoutDimensionsInSurface() {
     if (!layout.style.width) {
       layout.style.width = `${Math.round(rect.width)}px`;
     }
-    if (!layout.style.height) {
-      layout.style.height = `${Math.round(Math.max(40, rect.height))}px`;
+    if (layout.dataset.heightLocked !== 'true') {
+      layout.style.removeProperty('height');
+      layout.style.removeProperty('min-height');
     }
   });
 }
@@ -2714,10 +2133,6 @@ function insertRichColumnsLayout(columnCount = 2) {
     insertedLayout.style.width = buildDefaultRichLayoutWidthValue(safeCols);
     applyRichLayoutColumnWidths(insertedLayout, getDefaultRichLayoutWeights(safeCols));
     applySpacingToRichLayout(insertedLayout, String(DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX));
-    const initialRect = insertedLayout.getBoundingClientRect();
-    if (Number.isFinite(initialRect.height) && initialRect.height > 0) {
-      insertedLayout.style.height = `${Math.round(Math.max(40, initialRect.height))}px`;
-    }
     setSelectedRichLayoutElement(insertedLayout);
   }
   const firstParagraph = insertedLayout?.querySelector('[data-col="1"] p');
@@ -2969,8 +2384,7 @@ function openRichEditorModal(hotspot = getSelectedInfoHotspot(), options = {}) {
   ensureRichImageResizeHandle();
   setSelectedRichLayoutElement(null);
   setSelectedRichImageElement(null);
-  richEditorSavedRange = null;
-  richEditorSavedExpandedRange = null;
+  clearRichEditorSavedRanges();
   richEditorModal.classList.add('visible');
   richEditorModal.setAttribute('aria-hidden', 'false');
   richEditorModal.classList.toggle('home-page-editor-mode', contextType === 'home-page');
@@ -9965,15 +9379,10 @@ richEditorSurface?.addEventListener('pointerup', () => {
   }
 });
 richEditorSurface?.addEventListener('mousemove', (event) => {
-  if (!richEditorSurface || richEditorDragState) return;
-  const rect = richEditorSurface.getBoundingClientRect();
-  const inDragZone = (event.clientY - rect.top) <= 18;
-  richEditorSurface.classList.toggle('drag-zone', inDragZone);
+  runtimeRichModal?.handleSurfaceHover(event);
 });
 richEditorSurface?.addEventListener('mouseleave', () => {
-  if (!richEditorDragState) {
-    richEditorSurface?.classList.remove('drag-zone');
-  }
+  runtimeRichModal?.handleSurfaceLeave();
 });
 richEditorSurface?.addEventListener('click', (event) => {
   const layout = event.target instanceof Element ? findClosestRichLayout(event.target) : null;
@@ -9999,11 +9408,13 @@ richEditorSurface?.addEventListener('paste', (event) => {
   event.preventDefault();
   const plainText = event.clipboardData?.getData('text/plain') ?? '';
   insertPlainTextAtCursor(plainText);
+  syncAutoRichLayoutHeights();
   syncRichEditorSelectionState();
   saveRichEditorSelectionRange();
   saveRichEditorModalContent({ closeAfterSave: false });
 });
 richEditorSurface?.addEventListener('input', () => {
+  syncAutoRichLayoutHeights();
   syncRichEditorSelectionState();
   saveRichEditorSelectionRange();
   saveRichEditorModalContent({ closeAfterSave: false });
@@ -10050,7 +9461,7 @@ richEditorSurface?.addEventListener('keydown', (event) => {
 window.addEventListener('resize', () => {
   updateRichImageResizeHandle();
   updateRichLayoutBlockResizeHandle();
-  updateRichModalResizeHandle();
+  runtimeRichModal?.updateResizeHandle();
 });
 btnEditHomePage?.addEventListener('click', toggleHomePageEditMode);
 btnSaveHomePage?.addEventListener('click', saveHomePageState);

@@ -49,6 +49,7 @@ The project is operational and currently includes:
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
 - refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, mobile panels, and hotspot/modal now live in dedicated viewer modules
+- refactoring status: builder visual editor extraction started; modal frame, layout resize, selection/media handles, and typography controls now live in dedicated editor modules
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -61,6 +62,17 @@ Completed viewer runtime extraction phases:
 Current result:
 - `viewer/app.js` acts primarily as the runtime coordinator
 - extracted modules are bundled into static export and used by the published viewer package
+
+## Builder Refactoring Status
+Completed visual editor extraction phases:
+- Phase 1: `modal frame + drag/resize` -> `editor/runtime-rich-modal.js`
+- Phase 2: `column layout resize + block height handle` -> `editor/runtime-rich-layout.js`
+- Phase 3: `layout/media selection + media resize handles` -> `editor/runtime-rich-selection.js`
+- Phase 4: `typography controls + saved selection handling` -> `editor/runtime-rich-typography.js`
+
+Current result:
+- `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
+- column layout behavior was stabilized so width resize returns the block to auto-height while explicit block-height resize remains a separate locked mode
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
@@ -95,6 +107,10 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 ## Repository Structure
 - `editor/index.html`: editor UI
 - `editor/app.js`: full editor logic
+- `editor/runtime-rich-modal.js`: extracted rich editor modal frame controller
+- `editor/runtime-rich-layout.js`: extracted rich editor columns/layout resize controller
+- `editor/runtime-rich-selection.js`: extracted rich editor layout/media selection controller
+- `editor/runtime-rich-typography.js`: extracted rich editor typography controller
 - `editor/tiler.worker.js`: equirectangular -> cubemap tiling worker
 - `editor/vendor/jszip.min.js`: ZIP export support
 - `viewer/index.html`: viewer UI
