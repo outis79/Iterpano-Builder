@@ -266,7 +266,7 @@ const DEFAULT_INFO_FRAME_HOTSPOT_OFFSET_Y = 10;
 const DEFAULT_INFO_HOTSPOT_COLOR_KEY = 'yellow';
 const DEFAULT_INFO_HOTSPOT_DISPLAY_MODE = 'click';
 const DEFAULT_INFO_BG_COLOR_KEY = 'black';
-const DEFAULT_INFO_BG_TRANSPARENCY = 0;
+const DEFAULT_INFO_BG_TRANSPARENCY = 20;
 const MIN_INFO_FRAME_WIDTH = 44;
 const MAX_INFO_FRAME_WIDTH = 2400;
 const MIN_INFO_FRAME_HEIGHT = 30;
@@ -630,11 +630,11 @@ function sanitizeRichLineHeightValue(value) {
   if (!raw) return '';
   if (/^\d(?:\.\d+)?$/.test(raw)) {
     const amount = Number.parseFloat(raw);
-    if (amount >= 0.8 && amount <= 3) return String(amount);
+    if (amount >= 0.1 && amount <= 3) return String(amount);
   }
   if (/^\d{2,3}%$/.test(raw)) {
     const amount = Number.parseInt(raw, 10);
-    if (amount >= 80 && amount <= 300) return `${amount}%`;
+    if (amount >= 10 && amount <= 300) return `${amount}%`;
   }
   if (/^\d{1,3}(\.\d+)?(px|em|rem)$/.test(raw)) {
     return raw;
@@ -678,6 +678,16 @@ function applyRichParagraphSpacingInSelection(spacingValue) {
     syncAutoRichLayoutHeights();
   }
   return applied;
+}
+
+function syncClosestRichLayoutHeightFromNode(startNode) {
+  if (!richEditorSurface) return;
+  const layout = findClosestRichLayout(startNode);
+  if (!(layout instanceof HTMLElement)) return;
+  layout.removeAttribute('data-height-locked');
+  layout.style.removeProperty('height');
+  layout.style.removeProperty('min-height');
+  syncAutoRichLayoutHeights();
 }
 
 function getRichBlockNodeForSelection(node) {
@@ -959,6 +969,8 @@ function normalizeVideoEmbedUrl(value) {
 function sanitizeRichHtml(rawHtml) {
   const template = document.createElement('template');
   template.innerHTML = String(rawHtml || '').replace(/\u200b/g, '');
+  const root = document.createElement('div');
+  root.appendChild(template.content);
   const allowedTags = new Set([
     'p', 'br', 'strong', 'b', 'em', 'i', 'u',
     'ul', 'ol', 'li', 'img', 'video', 'iframe',
@@ -1210,9 +1222,15 @@ function sanitizeRichHtml(rawHtml) {
           const requestedHeight = sanitizeImageMaxHeightValue(heightMatch ? heightMatch[1] : (originalAttrs.height || ''));
           if (requestedWidth) {
             node.style.width = requestedWidth;
+          } else {
+            node.style.width = '100%';
+            node.style.maxWidth = '100%';
           }
           if (requestedHeight) {
             node.style.height = requestedHeight;
+          } else {
+            node.style.height = 'auto';
+            node.style.aspectRatio = '16 / 9';
           }
           node.style.display = 'block';
           node.style.marginTop = '0.5em';
@@ -1314,8 +1332,9 @@ function sanitizeRichHtml(rawHtml) {
     Array.from(node.childNodes || []).forEach(cleanNode);
   };
 
-  Array.from(template.content.childNodes).forEach(cleanNode);
-  return template.innerHTML;
+  Array.from(root.childNodes).forEach(cleanNode);
+  trimTrailingEmptyParagraphs(root);
+  return root.innerHTML;
 }
 
 function trimTrailingEmptyParagraphs(container) {
@@ -1996,10 +2015,16 @@ function getClosestRichBlock(node) {
   if (!node || !richEditorSurface) return null;
   let el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   if (!(el instanceof Element)) return null;
-  const block = el.closest('p,div,h1,h2,h3,h4,ul,ol,li,table,blockquote');
-  if (!block || !richEditorSurface.contains(block)) return null;
-  if (block === richEditorSurface) return null;
-  return block;
+  let block = el.closest('p,div,h1,h2,h3,h4,ul,ol,li,table,blockquote');
+  while (block && block !== richEditorSurface) {
+    if (block.matches?.('div[data-col], div[data-layout]')) {
+      block = block.parentElement?.closest?.('p,div,h1,h2,h3,h4,ul,ol,li,table,blockquote') || null;
+      continue;
+    }
+    if (!richEditorSurface.contains(block)) return null;
+    return block;
+  }
+  return null;
 }
 
 function insertStandaloneElementAtCurrentLine(element) {
@@ -2016,10 +2041,18 @@ function insertStandaloneElementAtCurrentLine(element) {
   }
 
   const block = getClosestRichBlock(range.startContainer);
+  const currentColumn = getClosestRichColumn(range.startContainer);
+  const insertNode = currentColumn
+    ? (() => {
+      const wrapper = document.createElement('p');
+      wrapper.appendChild(element);
+      return wrapper;
+    })()
+    : element;
   if (block && block.parentNode) {
     const parent = block.parentNode;
     if (isEffectivelyEmptyParagraph(block)) {
-      parent.insertBefore(element, block);
+      parent.insertBefore(insertNode, block);
       block.remove();
     } else {
       const beforeRange = document.createRange();
@@ -2027,15 +2060,23 @@ function insertStandaloneElementAtCurrentLine(element) {
       beforeRange.setEnd(range.startContainer, range.startOffset);
       const atStartOfBlock = String(beforeRange.toString() || '').trim().length === 0;
       if (atStartOfBlock) {
-        parent.insertBefore(element, block);
+        parent.insertBefore(insertNode, block);
       } else if (block.nextSibling) {
-        parent.insertBefore(element, block.nextSibling);
+        parent.insertBefore(insertNode, block.nextSibling);
       } else {
-        parent.appendChild(element);
+        parent.appendChild(insertNode);
       }
     }
+  } else if (currentColumn) {
+    const emptyParagraph = Array.from(currentColumn.children).find((child) => isEffectivelyEmptyParagraph(child));
+    if (emptyParagraph instanceof HTMLElement) {
+      currentColumn.insertBefore(insertNode, emptyParagraph);
+      emptyParagraph.remove();
+    } else {
+      currentColumn.appendChild(insertNode);
+    }
   } else {
-    richEditorSurface.appendChild(element);
+    richEditorSurface.appendChild(insertNode);
   }
 
   setSelectedRichImageElement(element);
@@ -2198,9 +2239,10 @@ function deleteRichLayoutColumn() {
 function insertParagraphBelowSelectedBlock() {
   const layout = getSelectedRichLayoutElement();
   const media = getSelectedRichImageElement();
-  const anchor = layout || media;
+  const mediaRow = media?.closest?.('p');
+  const anchor = mediaRow || media || layout || getCurrentRichRowAnchor();
   if (!anchor || !anchor.parentNode) {
-    updateStatus('Select a columns block, image, or video first.');
+    updateStatus('Select a block/media or place the cursor in the target row first.');
     return;
   }
   const paragraph = document.createElement('p');
@@ -2224,9 +2266,10 @@ function insertParagraphBelowSelectedBlock() {
 function insertParagraphAboveSelectedBlock() {
   const layout = getSelectedRichLayoutElement();
   const media = getSelectedRichImageElement();
-  const anchor = layout || media;
+  const mediaRow = media?.closest?.('p');
+  const anchor = mediaRow || media || layout || getCurrentRichRowAnchor();
   if (!anchor || !anchor.parentNode) {
-    updateStatus('Select a columns block, image, or video first.');
+    updateStatus('Select a block/media or place the cursor in the target row first.');
     return;
   }
   const paragraph = document.createElement('p');
@@ -2268,37 +2311,44 @@ function clearSelectedRichLayout() {
   updateStatus('Columns layout removed.');
 }
 
+function getCurrentRichRowAnchor() {
+  if (!richEditorSurface) return null;
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  let anchorNode = selection.anchorNode;
+  if (anchorNode?.nodeType === Node.TEXT_NODE) {
+    anchorNode = anchorNode.parentElement;
+  }
+  if (!(anchorNode instanceof Element)) return null;
+  const row = anchorNode.closest('p,h1,h2,h3,h4,li,blockquote,table');
+  if (row instanceof HTMLElement && richEditorSurface.contains(row)) {
+    return row;
+  }
+  return null;
+}
+
 function deleteCurrentRichParagraph() {
   if (!richEditorSurface) {
     updateStatus('Open Visual Editor first.');
     return;
   }
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    updateStatus('Place the cursor inside the row you want to delete.');
+  const media = getSelectedRichImageElement();
+  const row = media?.closest?.('p') || getCurrentRichRowAnchor();
+  if (!(row instanceof HTMLElement) || !richEditorSurface.contains(row)) {
+    updateStatus('Place the cursor inside the row you want to delete, or select a media row.');
     return;
   }
-  let anchorNode = selection.anchorNode;
-  if (anchorNode?.nodeType === Node.TEXT_NODE) {
-    anchorNode = anchorNode.parentElement;
-  }
-  const paragraph = anchorNode instanceof Element
-    ? anchorNode.closest('p')
-    : null;
-  if (!(paragraph instanceof HTMLParagraphElement) || !richEditorSurface.contains(paragraph)) {
-    updateStatus('Place the cursor inside the row you want to delete.');
-    return;
-  }
-  const parent = paragraph.parentNode;
+  const parent = row.parentNode;
   if (!parent) {
     updateStatus('Unable to delete current row.');
     return;
   }
   const fallbackParagraph = document.createElement('p');
   fallbackParagraph.innerHTML = '<br>';
-  const previousSibling = paragraph.previousSibling;
-  const nextSibling = paragraph.nextSibling;
-  paragraph.remove();
+  const previousSibling = row.previousSibling;
+  const nextSibling = row.nextSibling;
+  row.remove();
   let targetNode = null;
   if (previousSibling instanceof Node && previousSibling.parentNode === parent) {
     targetNode = previousSibling;
@@ -2319,6 +2369,7 @@ function deleteCurrentRichParagraph() {
   selection.removeAllRanges();
   selection.addRange(range);
   richEditorSavedRange = range.cloneRange();
+  setSelectedRichImageElement(null);
   syncRichEditorSelectionState();
   updateStatus('Current row deleted.');
 }
@@ -3055,15 +3106,182 @@ function renderSceneLinkColorOptions(selectElement, selectedKey) {
   selectElement.innerHTML = '';
   Object.keys(FLOORPLAN_COLOR_MAP).forEach((key) => {
     const option = document.createElement('option');
+    const optionColor = getSceneLinkColorHex(key);
     option.value = key;
     option.textContent = '⬤';
     option.title = colorLabelFromKey(key);
-    option.style.color = getSceneLinkColorHex(key);
+    option.style.color = getContrastTextColor(optionColor);
+    option.style.backgroundColor = optionColor;
     selectElement.appendChild(option);
   });
   selectElement.value = normalized;
   selectElement.style.color = getSceneLinkColorHex(normalized);
+  syncCustomColorSelect(selectElement);
 }
+
+function createRichColorPicker(selectedKey, { title = 'Color' } = {}) {
+  const root = document.createElement('div');
+  root.className = 'rich-color-picker';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'rich-color-picker-button';
+  button.title = title;
+  button.setAttribute('aria-haspopup', 'listbox');
+  button.setAttribute('aria-expanded', 'false');
+
+  const swatch = document.createElement('span');
+  swatch.className = 'rich-color-picker-swatch';
+  button.appendChild(swatch);
+
+  const caret = document.createElement('span');
+  caret.className = 'rich-color-picker-caret';
+  caret.textContent = '▼';
+  button.appendChild(caret);
+
+  const panel = document.createElement('div');
+  panel.className = 'rich-color-picker-panel hidden';
+  panel.setAttribute('role', 'listbox');
+  root.append(button, panel);
+
+  let value = normalizeFloorplanColorKey(selectedKey);
+  let changeHandler = null;
+
+  const closePanel = () => {
+    panel.classList.add('hidden');
+    button.setAttribute('aria-expanded', 'false');
+  };
+
+  const openPanel = () => {
+    if (button.disabled) return;
+    panel.classList.remove('hidden');
+    button.setAttribute('aria-expanded', 'true');
+  };
+
+  const syncValue = () => {
+    const color = getSceneLinkColorHex(value);
+    swatch.style.backgroundColor = color;
+    swatch.style.borderColor = darkenHex(color, 0.28);
+    button.dataset.colorKey = value;
+  };
+
+  Object.keys(FLOORPLAN_COLOR_MAP).forEach((key) => {
+    const optionColor = getSceneLinkColorHex(key);
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'rich-color-picker-option';
+    option.title = colorLabelFromKey(key);
+    option.dataset.colorKey = key;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-label', colorLabelFromKey(key));
+    option.style.backgroundColor = optionColor;
+    option.style.borderColor = darkenHex(optionColor, 0.28);
+    option.style.color = getContrastTextColor(optionColor);
+    option.textContent = '●';
+    option.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    option.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      value = normalizeFloorplanColorKey(key);
+      syncValue();
+      closePanel();
+      panel.querySelectorAll('.rich-color-picker-option').forEach((node) => {
+        node.classList.toggle('active', node.dataset.colorKey === value);
+      });
+      if (typeof changeHandler === 'function') {
+        changeHandler(value);
+      }
+    });
+    panel.appendChild(option);
+  });
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (panel.classList.contains('hidden')) openPanel();
+    else closePanel();
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!root.contains(event.target)) {
+      closePanel();
+    }
+  });
+
+  syncValue();
+  panel.querySelectorAll('.rich-color-picker-option').forEach((node) => {
+    node.classList.toggle('active', node.dataset.colorKey === value);
+  });
+
+  return {
+    root,
+    button,
+    close: closePanel,
+    open: openPanel,
+    getValue() {
+      return value;
+    },
+    setValue(nextValue) {
+      value = normalizeFloorplanColorKey(nextValue);
+      syncValue();
+      panel.querySelectorAll('.rich-color-picker-option').forEach((node) => {
+        node.classList.toggle('active', node.dataset.colorKey === value);
+      });
+    },
+    setDisabled(disabled) {
+      button.disabled = !!disabled;
+      root.classList.toggle('disabled', !!disabled);
+      if (disabled) closePanel();
+    },
+    onChange(handler) {
+      changeHandler = handler;
+    }
+  };
+}
+
+const enhancedColorSelects = new WeakMap();
+
+function ensureCustomColorSelect(selectElement, { title = 'Color' } = {}) {
+  if (!(selectElement instanceof HTMLSelectElement)) return null;
+  let controller = enhancedColorSelects.get(selectElement);
+  if (controller) return controller;
+  const picker = createRichColorPicker(selectElement.value || DEFAULT_INFO_BG_COLOR_KEY, { title });
+  selectElement.classList.add('native-color-select-hidden');
+  selectElement.insertAdjacentElement('afterend', picker.root);
+  picker.onChange((value) => {
+    const nextValue = normalizeFloorplanColorKey(value);
+    selectElement.value = nextValue;
+    selectElement.style.color = getSceneLinkColorHex(nextValue);
+    selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  controller = {
+    selectElement,
+    picker,
+    sync() {
+      const fallbackValue = selectElement.value
+        || selectElement.querySelector('option')?.value
+        || DEFAULT_INFO_BG_COLOR_KEY;
+      picker.setValue(fallbackValue);
+      picker.setDisabled(selectElement.disabled);
+    }
+  };
+  enhancedColorSelects.set(selectElement, controller);
+  controller.sync();
+  return controller;
+}
+
+function syncCustomColorSelect(selectElement) {
+  enhancedColorSelects.get(selectElement)?.sync();
+}
+
+ensureCustomColorSelect(infoHotspotColorSelect, { title: 'Hotspot color' });
 
 function sanitizeInfoBackgroundTransparencyPercent(value, fallback = DEFAULT_INFO_BG_TRANSPARENCY) {
   const numeric = Number.parseInt(String(value ?? ''), 10);
@@ -3137,8 +3355,13 @@ function applyPreviewModalFrameSize(hotspot) {
   if (isRichLike) {
     const maxWidth = Math.max(MIN_INFO_FRAME_WIDTH, window.innerWidth - 16);
     const maxHeight = Math.max(MIN_INFO_FRAME_HEIGHT, window.innerHeight - 16);
-    const width = Math.min(frame.width, maxWidth);
-    const height = Math.min(frame.height, maxHeight);
+    let width = Math.min(frame.width, maxWidth);
+    let height = Math.min(frame.height, maxHeight);
+    const measured = measurePreviewRichContentFrame(width, height);
+    if (measured) {
+      width = measured.width;
+      height = measured.height;
+    }
     previewModalContent.style.width = `${width}px`;
     previewModalContent.style.height = `${height}px`;
     previewModalBody.style.height = `${height}px`;
@@ -3166,6 +3389,51 @@ function applyPreviewModalFrameSize(hotspot) {
   previewModalContent.style.width = `${width}px`;
   previewModalBody.style.height = `${frame.height}px`;
   previewModalBody.style.maxHeight = `${frame.height}px`;
+}
+
+function measurePreviewRichContentFrame(maxWidth, maxHeight) {
+  if (!previewModalBody || !document.body) return null;
+  if (!previewModalBody.classList.contains('preview-rich-surface')) return null;
+  if (!previewModalBody.childNodes.length) return null;
+  const measurer = document.createElement('div');
+  measurer.className = 'modal-body preview-rich-surface';
+  measurer.style.position = 'fixed';
+  measurer.style.left = '-20000px';
+  measurer.style.top = '0';
+  measurer.style.visibility = 'hidden';
+  measurer.style.pointerEvents = 'none';
+  measurer.style.width = 'fit-content';
+  measurer.style.height = 'auto';
+  measurer.style.maxWidth = `${Math.max(MIN_INFO_FRAME_WIDTH, maxWidth)}px`;
+  measurer.style.maxHeight = 'none';
+  measurer.style.overflow = 'visible';
+  previewModalBody.childNodes.forEach((node) => {
+    measurer.appendChild(node.cloneNode(true));
+  });
+  document.body.appendChild(measurer);
+  const rect = measurer.getBoundingClientRect();
+  measurer.remove();
+  if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)) return null;
+  return {
+    width: Math.max(MIN_INFO_FRAME_WIDTH, Math.min(Math.ceil(rect.width), maxWidth)),
+    height: Math.max(MIN_INFO_FRAME_HEIGHT, Math.min(Math.ceil(rect.height), maxHeight)),
+  };
+}
+
+function schedulePreviewRichContentFrameRefresh(hotspot) {
+  if (!previewModalBody || !previewModal?.classList.contains('visible')) return;
+  requestAnimationFrame(() => {
+    if (!previewModal?.classList.contains('visible')) return;
+    applyPreviewModalFrameSize(hotspot);
+  });
+  previewModalBody.querySelectorAll('img, video, iframe').forEach((mediaEl) => {
+    const refresh = () => {
+      if (!previewModal?.classList.contains('visible')) return;
+      applyPreviewModalFrameSize(hotspot);
+    };
+    mediaEl.addEventListener('load', refresh, { once: true });
+    mediaEl.addEventListener('loadedmetadata', refresh, { once: true });
+  });
 }
 
 function resetPreviewModalFrameSize() {
@@ -4799,13 +5067,14 @@ function openHotspotPreview(hotspotId) {
     const richHtml = sanitizeRichHtml(getInfoHotspotRichContent(hotspot));
     previewModalBody.classList.add('preview-rich-surface');
     previewModalBody.setAttribute('contenteditable', 'false');
-    applyPreviewModalFrameSize(hotspot);
-    applyPreviewModalVisualStyle(hotspot);
     previewModalBody.innerHTML = richHtml || '<p><br></p>';
     trimTrailingEmptyParagraphs(previewModalBody);
     resolveRichMediaReferencesInContainer(previewModalBody, state.project, { preferDataUrl: true });
+    applyPreviewModalFrameSize(hotspot);
+    applyPreviewModalVisualStyle(hotspot);
     previewModal.classList.add('visible');
     previewModal.setAttribute('aria-hidden', 'false');
+    schedulePreviewRichContentFrameRefresh(hotspot);
     scheduleMarkerRender();
     return;
   }
@@ -5264,13 +5533,14 @@ function openHomePagePreview() {
   previewModalContent?.classList.add('modal-content-rich-preview');
   previewModalBody.classList.add('preview-rich-surface');
   previewModalBody.setAttribute('contenteditable', 'false');
-  applyPreviewModalFrameSize(homePage);
-  applyPreviewModalVisualStyle(homePage);
   previewModalBody.innerHTML = richHtml;
   trimTrailingEmptyParagraphs(previewModalBody);
   resolveRichMediaReferencesInContainer(previewModalBody, state.project, { preferDataUrl: true });
+  applyPreviewModalFrameSize(homePage);
+  applyPreviewModalVisualStyle(homePage);
   previewModal.classList.add('visible');
   previewModal.setAttribute('aria-hidden', 'false');
+  schedulePreviewRichContentFrameRefresh(homePage);
   scheduleMarkerRender();
 }
 
@@ -5362,6 +5632,7 @@ function renderInfoHotspotList() {
     if (infoHotspotColorSelect) {
       renderSceneLinkColorOptions(infoHotspotColorSelect, DEFAULT_INFO_HOTSPOT_COLOR_KEY);
       infoHotspotColorSelect.disabled = true;
+      syncCustomColorSelect(infoHotspotColorSelect);
     }
     if (btnAddHotspot) btnAddHotspot.disabled = true;
     if (btnDeleteHotspot) btnDeleteHotspot.disabled = true;
@@ -5403,6 +5674,7 @@ function renderInfoHotspotList() {
       selectedInfo ? getInfoHotspotColorKey(selectedInfo) : DEFAULT_INFO_HOTSPOT_COLOR_KEY
     );
     infoHotspotColorSelect.disabled = !selectedInfo || !isInfoHotspotInteractionModeActive();
+    syncCustomColorSelect(infoHotspotColorSelect);
   }
   if (infoHotspotModeSelect) {
     infoHotspotModeSelect.value = selectedInfo
@@ -5826,7 +6098,7 @@ function renderContentBlocks() {
   lineInput.classList.add('rich-font-size-input-compact');
   lineInput.classList.add('rich-font-size-input-3digits');
   lineInput.type = 'number';
-  lineInput.min = '0.8';
+  lineInput.min = '0.1';
   lineInput.max = '3';
   lineInput.step = '0.1';
   lineInput.value = '1.2';
@@ -5849,28 +6121,27 @@ function renderContentBlocks() {
 
   const textColorLabel = document.createElement('label');
   textColorLabel.className = 'rich-font-size-control';
-  textColorLabel.textContent = 'Txt';
+  textColorLabel.textContent = 'T.Col';
   toolbar.appendChild(textColorLabel);
 
-  const textColorSelect = document.createElement('select');
-  textColorSelect.className = 'floorplan-color-select';
-  renderSceneLinkColorOptions(textColorSelect, 'white');
-  toolbar.appendChild(textColorSelect);
+  const textColorPicker = createRichColorPicker('white', { title: 'Text color' });
+  toolbar.appendChild(textColorPicker.root);
 
   const bgColorLabel = document.createElement('label');
   bgColorLabel.className = 'rich-font-size-control';
-  bgColorLabel.textContent = 'Bg';
+  bgColorLabel.textContent = 'B.Col';
   toolbar.appendChild(bgColorLabel);
 
-  const bgColorSelect = document.createElement('select');
-  bgColorSelect.className = 'floorplan-color-select';
   const existingVisualStyle = getInfoHotspotEditorVisualStyle(hotspot);
-  renderSceneLinkColorOptions(bgColorSelect, existingVisualStyle?.backgroundColorKey || DEFAULT_INFO_BG_COLOR_KEY);
-  toolbar.appendChild(bgColorSelect);
+  const bgColorPicker = createRichColorPicker(
+    existingVisualStyle?.backgroundColorKey || DEFAULT_INFO_BG_COLOR_KEY,
+    { title: 'Background color' }
+  );
+  toolbar.appendChild(bgColorPicker.root);
 
   const bgOpacityLabel = document.createElement('label');
   bgOpacityLabel.className = 'rich-font-size-control';
-  bgOpacityLabel.textContent = 'Bg%';
+  bgOpacityLabel.textContent = 'B.Tr';
   toolbar.appendChild(bgOpacityLabel);
 
   const bgOpacityInput = document.createElement('input');
@@ -5945,7 +6216,7 @@ function renderContentBlocks() {
   const btnInsertCols = document.createElement('button');
   btnInsertCols.className = 'btn ghost';
   btnInsertCols.type = 'button';
-  btnInsertCols.textContent = 'Cols...';
+  btnInsertCols.textContent = 'Block';
   toolbar.appendChild(btnInsertCols);
 
   const btnLayoutAddCol = document.createElement('button');
@@ -5989,19 +6260,19 @@ function renderContentBlocks() {
   const btnLayoutBelow = document.createElement('button');
   btnLayoutBelow.className = 'btn ghost';
   btnLayoutBelow.type = 'button';
-  btnLayoutBelow.textContent = 'Below';
+  btnLayoutBelow.textContent = 'L.Below';
   toolbar.appendChild(btnLayoutBelow);
 
   const btnLayoutAbove = document.createElement('button');
   btnLayoutAbove.className = 'btn ghost';
   btnLayoutAbove.type = 'button';
-  btnLayoutAbove.textContent = 'Above';
+  btnLayoutAbove.textContent = 'L.Above';
   toolbar.appendChild(btnLayoutAbove);
 
   const btnDeleteRow = document.createElement('button');
   btnDeleteRow.className = 'btn ghost';
   btnDeleteRow.type = 'button';
-  btnDeleteRow.textContent = 'Delete Row';
+  btnDeleteRow.textContent = 'L.Delete';
   toolbar.appendChild(btnDeleteRow);
 
   const btnImageSize = document.createElement('button');
@@ -6055,8 +6326,8 @@ function renderContentBlocks() {
     sizeInput,
     lineInput,
     pSpaceInput,
-    textColorSelect,
-    bgColorSelect,
+    textColorPicker.button,
+    bgColorPicker.button,
     bgOpacityInput
   ];
   infoContentControls.forEach((control) => {
@@ -6122,10 +6393,9 @@ function renderContentBlocks() {
       }
       return false;
     }
-    const colorKey = normalizeFloorplanColorKey(bgColorSelect.value || DEFAULT_INFO_BG_COLOR_KEY);
+    const colorKey = normalizeFloorplanColorKey(bgColorPicker.getValue() || DEFAULT_INFO_BG_COLOR_KEY);
     const transparencyPercent = sanitizeInfoBackgroundTransparencyPercent(bgOpacityInput.value, DEFAULT_INFO_BG_TRANSPARENCY);
-    bgColorSelect.value = colorKey;
-    bgColorSelect.style.color = FLOORPLAN_COLOR_MAP[colorKey];
+    bgColorPicker.setValue(colorKey);
     bgOpacityInput.value = String(transparencyPercent);
     setInfoHotspotEditorVisualStyle(hotspot, colorKey, transparencyPercent);
     applyRichEditorSurfaceVisualStyle(hotspot);
@@ -6214,13 +6484,12 @@ function renderContentBlocks() {
     updateStatus('Open Visual Editor to change paragraph spacing.');
   });
 
-  textColorSelect.addEventListener('mousedown', () => {
+  textColorPicker.button.addEventListener('mousedown', () => {
     saveRichEditorSelectionRange();
   });
-  textColorSelect.addEventListener('change', () => {
-    const colorKey = normalizeFloorplanColorKey(textColorSelect.value || 'yellow');
-    textColorSelect.value = colorKey;
-    textColorSelect.style.color = FLOORPLAN_COLOR_MAP[colorKey];
+  textColorPicker.onChange((nextValue) => {
+    const colorKey = normalizeFloorplanColorKey(nextValue || 'yellow');
+    textColorPicker.setValue(colorKey);
     if (runVisualEditorAction(() => {
       richEditorSurface?.focus();
       restoreRichEditorSelectionRange();
@@ -6232,7 +6501,7 @@ function renderContentBlocks() {
     updateStatus('Open Visual Editor to change text color.');
   });
 
-  bgColorSelect.addEventListener('change', () => {
+  bgColorPicker.onChange(() => {
     applyBackgroundStyleFromControls();
   });
   bgOpacityInput.addEventListener('input', () => {
@@ -6311,11 +6580,12 @@ function renderContentBlocks() {
       const img = document.createElement('img');
       img.setAttribute('src', String(url).trim());
       img.setAttribute('alt', '');
-      img.setAttribute('data-wrap', 'left');
-      img.setAttribute('style', buildDefaultRichImageStyle({ wrap: 'left' }));
+      img.setAttribute('data-wrap', 'none');
+      img.setAttribute('style', buildDefaultRichImageStyle({ wrap: 'none' }));
       insertStandaloneElementAtCurrentLine(img);
+      syncClosestRichLayoutHeightFromNode(img);
     })) return;
-    insertIntoRichSourceModal(`\n<p><img src="${escaped}" alt="" data-wrap="left" style="${buildDefaultRichImageStyle({ wrap: 'left' })}"></p>\n`, hotspot);
+    insertIntoRichSourceModal(`\n<p><img src="${escaped}" alt="" data-wrap="none" style="${buildDefaultRichImageStyle({ wrap: 'none' })}"></p>\n`, hotspot);
   });
 
   btnUploadLocalImage.addEventListener('click', () => localImageInput.click());
@@ -6339,14 +6609,15 @@ function renderContentBlocks() {
         const img = document.createElement('img');
         img.setAttribute('src', src);
         img.setAttribute('alt', file.name || '');
-        img.setAttribute('data-wrap', 'left');
-        img.setAttribute('style', buildDefaultRichImageStyle({ wrap: 'left' }));
+        img.setAttribute('data-wrap', 'none');
+        img.setAttribute('style', buildDefaultRichImageStyle({ wrap: 'none' }));
         insertStandaloneElementAtCurrentLine(img);
+        syncClosestRichLayoutHeightFromNode(img);
       })) {
         updateStatus(`Local image inserted: ${file.name} (${media.id}).`);
         return;
       }
-      insertIntoRichSourceModal(`\n<p><img src="${mediaRef}" alt="${escapeHtml(file.name)}" data-wrap="left" style="${buildDefaultRichImageStyle({ wrap: 'left' })}"></p>\n`, hotspot);
+      insertIntoRichSourceModal(`\n<p><img src="${mediaRef}" alt="${escapeHtml(file.name)}" data-wrap="none" style="${buildDefaultRichImageStyle({ wrap: 'none' })}"></p>\n`, hotspot);
       updateStatus(`Local image inserted: ${file.name} (${media.id}).`);
     } catch (error) {
       console.error(error);
@@ -6367,12 +6638,24 @@ function renderContentBlocks() {
         const iframe = document.createElement('iframe');
         iframe.setAttribute('src', embedUrl);
         iframe.setAttribute('allowfullscreen', '');
+        iframe.style.width = '100%';
+        iframe.style.maxWidth = '100%';
+        iframe.style.height = 'auto';
+        iframe.style.aspectRatio = '16 / 9';
+        iframe.style.display = 'block';
+        iframe.style.marginTop = '0.5em';
+        iframe.style.marginBottom = '0.5em';
+        iframe.style.marginLeft = '0';
+        iframe.style.marginRight = 'auto';
+        iframe.setAttribute('data-align', 'left');
         insertStandaloneElementAtCurrentLine(iframe);
+        syncClosestRichLayoutHeightFromNode(iframe);
       } else {
         const video = document.createElement('video');
         video.setAttribute('src', normalizedUrl);
         video.setAttribute('controls', '');
         insertStandaloneElementAtCurrentLine(video);
+        syncClosestRichLayoutHeightFromNode(video);
       }
     })) return;
     if (isEmbed) {
@@ -6582,9 +6865,9 @@ function renderContentBlocks() {
   toolbarRow6.className = 'inline-actions rich-toolbar-row';
   toolbarRow6.append(
     textColorLabel,
-    textColorSelect,
+    textColorPicker.root,
     bgColorLabel,
-    bgColorSelect,
+    bgColorPicker.root,
     bgOpacityLabel,
     bgOpacityInput
   );
@@ -6610,15 +6893,20 @@ function renderContentBlocks() {
   toolbarRow9.append(
     colsSpaceLabel,
     colsSpaceInput,
-    btnLayoutEqual,
-    btnLayoutAbove,
-    btnLayoutBelow,
-    btnDeleteRow
+    btnLayoutEqual
   );
 
   const toolbarRow10 = document.createElement('div');
   toolbarRow10.className = 'inline-actions rich-toolbar-row';
   toolbarRow10.append(
+    btnLayoutBelow,
+    btnLayoutAbove,
+    btnDeleteRow
+  );
+
+  const toolbarRow11 = document.createElement('div');
+  toolbarRow11.className = 'inline-actions rich-toolbar-row';
+  toolbarRow11.append(
     btnImageSize,
     btnClearFormat
   );
@@ -6633,7 +6921,8 @@ function renderContentBlocks() {
     toolbarRow7,
     toolbarRow8,
     toolbarRow9,
-    toolbarRow10
+    toolbarRow10,
+    toolbarRow11
   );
   if (!infoContentEnabled) {
     const hint = document.createElement('div');

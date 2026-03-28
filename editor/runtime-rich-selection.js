@@ -191,6 +191,12 @@
         }
       }
 
+      // Media selection takes precedence over block selection so toolbar actions
+      // like Above/Below operate on the media row instead of the whole layout.
+      if (getSelectedImageElement()) {
+        setSelectedLayoutElement(null);
+      }
+
       if (
         selectedRichLayoutElement &&
         (!richEditorSurface.contains(selectedRichLayoutElement) || !selectedRichLayoutElement.isConnected)

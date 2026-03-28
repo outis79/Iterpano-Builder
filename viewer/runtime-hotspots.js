@@ -145,15 +145,65 @@
       modalBody.style.backgroundColor = withAlpha(hex, alpha);
     }
 
+    function measureRichInfoModalFrame(maxWidth, maxHeight) {
+      if (!modalBody || !document.body) return null;
+      if (!modalBody.classList.contains('preview-rich-surface')) return null;
+      if (!modalBody.childNodes.length) return null;
+      const measurer = document.createElement('div');
+      measurer.className = 'modal-body preview-rich-surface';
+      measurer.style.position = 'fixed';
+      measurer.style.left = '-20000px';
+      measurer.style.top = '0';
+      measurer.style.visibility = 'hidden';
+      measurer.style.pointerEvents = 'none';
+      measurer.style.width = 'fit-content';
+      measurer.style.height = 'auto';
+      measurer.style.maxWidth = `${Math.max(minInfoFrameWidth, maxWidth)}px`;
+      measurer.style.maxHeight = 'none';
+      measurer.style.overflow = 'visible';
+      modalBody.childNodes.forEach((node) => {
+        measurer.appendChild(node.cloneNode(true));
+      });
+      document.body.appendChild(measurer);
+      const rect = measurer.getBoundingClientRect();
+      measurer.remove();
+      if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)) return null;
+      return {
+        width: Math.max(minInfoFrameWidth, Math.min(Math.ceil(rect.width), maxWidth)),
+        height: Math.max(minInfoFrameHeight, Math.min(Math.ceil(rect.height), maxHeight)),
+      };
+    }
+
+    function scheduleInfoModalFrameRefresh(hotspot) {
+      if (!modal?.classList.contains('visible')) return;
+      requestAnimationFrame(() => {
+        if (!modal?.classList.contains('visible')) return;
+        applyInfoModalFrameSize(hotspot);
+      });
+      modalBody?.querySelectorAll('img, video, iframe').forEach((mediaEl) => {
+        const refresh = () => {
+          if (!modal?.classList.contains('visible')) return;
+          applyInfoModalFrameSize(hotspot);
+        };
+        mediaEl.addEventListener('load', refresh, { once: true });
+        mediaEl.addEventListener('loadedmetadata', refresh, { once: true });
+      });
+    }
+
     function applyInfoModalFrameSize(hotspot) {
       if (!modalContent || !modalBody) return;
       const frame = getViewportClampedInfoFrameSize(hotspot?.infoFrameSize);
       const mobileClamp = getMobileInfoFrameClamp();
-      const width = mobileClamp ? Math.min(frame.width, mobileClamp.maxWidth) : frame.width;
-      const height = mobileClamp ? Math.min(frame.height, mobileClamp.maxHeight) : frame.height;
+      let width = mobileClamp ? Math.min(frame.width, mobileClamp.maxWidth) : frame.width;
+      let height = mobileClamp ? Math.min(frame.height, mobileClamp.maxHeight) : frame.height;
       modal.classList.add('preview-modal-rich-like');
       modalContent.classList.add('modal-content-rich-preview');
       modalBody.classList.add('preview-rich-surface');
+      const measured = measureRichInfoModalFrame(width, height);
+      if (measured) {
+        width = measured.width;
+        height = measured.height;
+      }
       modalContent.style.width = `${width}px`;
       modalContent.style.height = `${height}px`;
       modalBody.style.height = `${height}px`;
@@ -300,12 +350,13 @@
       const isSceneLinkHotspot = blocks.some((block) => block.type === 'scene');
       if (!isSceneLinkHotspot && typeof hotspot.richContentHtml === 'string') {
         activeInfoHotspot = hotspot;
-        applyInfoModalFrameSize(hotspot);
         modalBody.innerHTML = sanitizeRichHtml(hotspot.richContentHtml) || '<p><br></p>';
         trimTrailingEmptyParagraphs(modalBody);
         resolveRichMediaReferencesInContainer(modalBody, getProjectData(), { preferDataUrl: false });
+        applyInfoModalFrameSize(hotspot);
         modal.classList.add('visible');
         modal.setAttribute('aria-hidden', 'false');
+        scheduleInfoModalFrameRefresh(hotspot);
         return;
       }
 

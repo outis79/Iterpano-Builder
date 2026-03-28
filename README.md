@@ -49,7 +49,7 @@ The project is operational and currently includes:
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
 - refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, mobile panels, and hotspot/modal now live in dedicated viewer modules
-- refactoring status: builder visual editor extraction started; modal frame, layout resize, selection/media handles, and typography controls now live in dedicated editor modules
+- refactoring status: builder visual editor extraction started; modal frame, layout resize, selection/media handles, and typography controls now live in dedicated editor modules, followed by a stabilization pass on columns, media insertion, row actions, custom color pickers, and tighter info-box sizing
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -69,10 +69,14 @@ Completed visual editor extraction phases:
 - Phase 2: `column layout resize + block height handle` -> `editor/runtime-rich-layout.js`
 - Phase 3: `layout/media selection + media resize handles` -> `editor/runtime-rich-selection.js`
 - Phase 4: `typography controls + saved selection handling` -> `editor/runtime-rich-typography.js`
+- Phase 5: `visual editor stabilization` -> column/media fixes, row insertion/deletion logic, custom color pickers, compact rich preview sizing
 
 Current result:
 - `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
 - column layout behavior was stabilized so width resize returns the block to auto-height while explicit block-height resize remains a separate locked mode
+- rich content editing now keeps media insertion and row actions consistent inside columns
+- color selection for rich editor and hotspot controls now uses custom pickers instead of native system dropdowns
+- rich preview/info boxes now trim trailing empty rows and size more tightly to real content
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:

@@ -70,6 +70,7 @@
           : document.elementFromPoint(event.clientX, event.clientY);
       const column = target?.closest('[data-col]');
       if (!column || !richEditorSurface.contains(column)) return false;
+      if (target !== column) return false;
       const layout = column.parentElement;
       if (!layout || !String(layout.getAttribute('data-layout') || '').startsWith('columns-')) return false;
       layout.removeAttribute('data-height-locked');
@@ -79,7 +80,7 @@
       const index = columns.indexOf(column);
       if (index < 0) return false;
       const rect = column.getBoundingClientRect();
-      const edgeThreshold = 12;
+      const edgeThreshold = 8;
       const nearRightEdge = (rect.right - event.clientX) <= edgeThreshold;
       const nearLeftEdge = (event.clientX - rect.left) <= edgeThreshold;
 
@@ -213,12 +214,16 @@
         hideBlockResizeHandle();
         return;
       }
-      const { layout, startY, startHeight } = richLayoutBlockResizeState;
+      const { layout, startY, startHeight, startWidth } = richLayoutBlockResizeState;
       const deltaY = event.clientY - startY;
       const nextHeight = Math.round(Math.min(1600, Math.max(40, startHeight + deltaY)));
-      const fitted = findWidthForTargetHeight(layout, nextHeight, 180, 2200);
-      layout.style.width = `${Math.round(Math.max(180, fitted.width))}px`;
+      const availableWidth = richEditorSurface
+        ? Math.max(Math.round(richEditorSurface.clientWidth - 24), Math.round(Math.max(180, startWidth)))
+        : 2200;
+      const fitted = findWidthForTargetHeight(layout, nextHeight, 180, availableWidth);
+      const lockedWidth = Math.round(Math.max(180, fitted.width));
       const lockedHeight = Math.round(Math.max(40, fitted.height));
+      layout.style.width = `${lockedWidth}px`;
       layout.style.height = `${lockedHeight}px`;
       layout.style.minHeight = `${lockedHeight}px`;
       layout.dataset.heightLocked = 'true';
