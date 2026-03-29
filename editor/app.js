@@ -172,6 +172,7 @@ let runtimeProjectImport = null;
 let runtimeEditorRender = null;
 let runtimeEditorEvents = null;
 let runtimeEditorUi = null;
+let runtimeEditorUtils = null;
 const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
@@ -308,6 +309,17 @@ const DEFAULT_RICH_LAYOUT_COLUMN_CHAR_WIDTH = 20;
 const DEFAULT_RICH_LAYOUT_COLUMN_GAP_PX = 2;
 const DEFAULT_INFO_FRAME_VIEWPORT_WIDTH = 1366;
 const DEFAULT_INFO_FRAME_VIEWPORT_HEIGHT = 768;
+
+runtimeEditorUtils = safeCreateRuntimeEditorModule(
+  'editor-utils',
+  () => window.IterpanoEditorUtils?.createEditorUtilsController({
+    generatedTiles,
+    floorplanColorMap: FLOORPLAN_COLOR_MAP,
+  }),
+  [
+    { label: 'IterpanoEditorUtils', value: window.IterpanoEditorUtils }
+  ]
+);
 
 function clampInfoFrameDimension(value, min, max, fallback) {
   const numeric = Number.parseInt(String(value ?? ''), 10);
@@ -3843,44 +3855,15 @@ function getSelectedFloorplanNodes() {
 }
 
 function sceneHasGeneratedTiles(scene) {
-  if (!scene) return false;
-  const generated = generatedTiles.get(scene.id);
-  if (generated && Object.keys(generated).length > 0) {
-    return true;
-  }
-  const hasPaths = Boolean(scene.tilesPath && scene.previewPath);
-  const levels = Array.isArray(scene.levels) ? scene.levels : [];
-  const hasRenderableLevel = levels.some((level) => (
-    Number.isFinite(Number(level?.size)) &&
-    Number(level.size) > 0 &&
-    Number.isFinite(Number(level?.tileSize)) &&
-    Number(level.tileSize) > 0 &&
-    !level?.fallbackOnly
-  ));
-  return false;
+  return runtimeEditorUtils?.sceneHasGeneratedTiles(scene) || false;
 }
 
 function countSceneLinksForScene(scene) {
-  if (!scene) return 0;
-  return (scene.hotspots || []).reduce((total, hotspot) => {
-    return total + (hotspot.contentBlocks || []).filter((block) => block.type === 'scene' && block.sceneId).length;
-  }, 0);
+  return runtimeEditorUtils?.countSceneLinksForScene(scene) || 0;
 }
 
 function collectStaticExportWarnings(project) {
-  const scenes = Array.isArray(project?.scenes) ? project.scenes : [];
-  const missingTiles = [];
-  const insufficientLinks = [];
-  scenes.forEach((scene) => {
-    if (!sceneHasGeneratedTiles(scene)) {
-      missingTiles.push(scene);
-    }
-    const linkCount = countSceneLinksForScene(scene);
-    if (linkCount < 2) {
-      insufficientLinks.push({ scene, linkCount });
-    }
-  });
-  return { missingTiles, insufficientLinks };
+  return runtimeEditorUtils?.collectStaticExportWarnings(project) || { missingTiles: [], insufficientLinks: [] };
 }
 
 function updateFloorplanDeleteNodeUi() {
@@ -3900,7 +3883,7 @@ function updateFloorplanSelectAllUi() {
 }
 
 function normalizeFloorplanColorKey(key) {
-  return Object.prototype.hasOwnProperty.call(FLOORPLAN_COLOR_MAP, key) ? key : 'yellow';
+  return runtimeEditorUtils?.normalizeFloorplanColorKey(key) || 'yellow';
 }
 
 function getSelectedFloorplanColorKey() {
@@ -3908,39 +3891,23 @@ function getSelectedFloorplanColorKey() {
 }
 
 function hexToRgb(hex) {
-  const clean = String(hex || '').replace('#', '');
-  const value = clean.length === 3
-    ? clean.split('').map((c) => c + c).join('')
-    : clean;
-  if (!/^[0-9a-f]{6}$/i.test(value)) return { r: 240, g: 200, b: 75 };
-  return {
-    r: Number.parseInt(value.slice(0, 2), 16),
-    g: Number.parseInt(value.slice(2, 4), 16),
-    b: Number.parseInt(value.slice(4, 6), 16)
-  };
+  return runtimeEditorUtils?.hexToRgb(hex) || { r: 240, g: 200, b: 75 };
 }
 
 function rgbToHex(r, g, b) {
-  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
-  return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`;
+  return runtimeEditorUtils?.rgbToHex(r, g, b) || '#f0c84b';
 }
 
 function darkenHex(hex, ratio = 0.22) {
-  const rgb = hexToRgb(hex);
-  const k = Math.max(0, Math.min(1, 1 - ratio));
-  return rgbToHex(rgb.r * k, rgb.g * k, rgb.b * k);
+  return runtimeEditorUtils?.darkenHex(hex, ratio) || '#b08f35';
 }
 
 function withAlpha(hex, alpha = 0.35) {
-  const rgb = hexToRgb(hex);
-  const a = Math.max(0, Math.min(1, alpha));
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
+  return runtimeEditorUtils?.withAlpha(hex, alpha) || 'rgba(240, 200, 75, 0.35)';
 }
 
 function getContrastTextColor(hex) {
-  const rgb = hexToRgb(hex);
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance >= 0.62 ? '#111111' : '#f8fafc';
+  return runtimeEditorUtils?.getContrastTextColor(hex) || '#111111';
 }
 
 function applyFloorplanNodeColorStyles(nodeElement, colorKey) {
