@@ -50,6 +50,7 @@ The project is operational and currently includes:
 - exported viewer gyro fallback is tuned for mobile panorama use with stable yaw handling and corrected pitch direction in the exported package
 - refactoring status: viewer runtime extraction started; fullscreen/orientation, gyro, floorplan/map, mobile panels, and hotspot/modal now live in dedicated viewer modules
 - refactoring status: builder visual editor extraction started; modal frame, layout resize, selection/media handles, and typography controls now live in dedicated editor modules, followed by a stabilization pass on columns, media insertion, row actions, custom color pickers, and tighter info-box sizing
+- refactoring status: builder hotspot authoring flow extraction started; hotspot selection, actions, mode orchestration, and sidebar rendering now live in dedicated editor modules
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -70,6 +71,10 @@ Completed visual editor extraction phases:
 - Phase 3: `layout/media selection + media resize handles` -> `editor/runtime-rich-selection.js`
 - Phase 4: `typography controls + saved selection handling` -> `editor/runtime-rich-typography.js`
 - Phase 5: `visual editor stabilization` -> column/media fixes, row insertion/deletion logic, custom color pickers, compact rich preview sizing
+- Phase 6: `hotspot selection + lookup` -> `editor/runtime-hotspot-selection.js`
+- Phase 7: `hotspot create/delete actions` -> `editor/runtime-hotspot-actions.js`
+- Phase 8: `hotspot mode orchestration` -> `editor/runtime-hotspot-modes.js`
+- Phase 9: `hotspot sidebar rendering helpers` -> `editor/runtime-hotspot-sidebar.js`
 
 Current result:
 - `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
@@ -77,6 +82,7 @@ Current result:
 - rich content editing now keeps media insertion and row actions consistent inside columns
 - color selection for rich editor and hotspot controls now uses custom pickers instead of native system dropdowns
 - rich preview/info boxes now trim trailing empty rows and size more tightly to real content
+- hotspot authoring flow now delegates selection, actions, mode toggles, and sidebar rendering to dedicated editor modules
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
@@ -115,6 +121,10 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `editor/runtime-rich-layout.js`: extracted rich editor columns/layout resize controller
 - `editor/runtime-rich-selection.js`: extracted rich editor layout/media selection controller
 - `editor/runtime-rich-typography.js`: extracted rich editor typography controller
+- `editor/runtime-hotspot-selection.js`: extracted hotspot selection/lookup controller
+- `editor/runtime-hotspot-actions.js`: extracted hotspot create/delete actions controller
+- `editor/runtime-hotspot-modes.js`: extracted hotspot mode orchestration controller
+- `editor/runtime-hotspot-sidebar.js`: extracted hotspot sidebar rendering controller
 - `editor/tiler.worker.js`: equirectangular -> cubemap tiling worker
 - `editor/vendor/jszip.min.js`: ZIP export support
 - `viewer/index.html`: viewer UI

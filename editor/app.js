@@ -151,6 +151,11 @@ let runtimeRichModal = null;
 let runtimeRichLayout = null;
 let runtimeRichSelection = null;
 let runtimeRichTypography = null;
+let runtimeHotspotSelection = null;
+let runtimeHotspotActions = null;
+let runtimeHotspotModes = null;
+let runtimeHotspotSidebar = null;
+const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
 const btnRichSourceClose = document.getElementById('btn-rich-source-close');
@@ -217,6 +222,37 @@ let richEditorContext = null;
 let richSourceContext = null;
 let richEditorSavedRange = null;
 let richEditorSavedExpandedRange = null;
+function reportRuntimeEditorModuleFailure(moduleName, reason, error = null) {
+  const message = `[Iterpano Builder] Runtime module init failed: ${moduleName}${reason ? ` (${reason})` : ''}`;
+  runtimeEditorModuleFailures.push({ moduleName, reason, error });
+  if (error) {
+    console.error(message, error);
+  } else {
+    console.error(message);
+  }
+}
+
+function safeCreateRuntimeEditorModule(moduleName, factory, requiredDeps = []) {
+  const missing = requiredDeps
+    .filter((entry) => !entry || !entry.value)
+    .map((entry) => entry?.label || 'unknown');
+  if (missing.length) {
+    reportRuntimeEditorModuleFailure(moduleName, `missing dependencies: ${missing.join(', ')}`);
+    return null;
+  }
+  try {
+    const instance = typeof factory === 'function' ? factory() : null;
+    if (!instance) {
+      reportRuntimeEditorModuleFailure(moduleName, 'factory returned empty module');
+      return null;
+    }
+    return instance;
+  } catch (error) {
+    reportRuntimeEditorModuleFailure(moduleName, 'exception during initialization', error);
+    return null;
+  }
+}
+
 function getRichEditorSavedRanges() {
   return {
     range: richEditorSavedRange,
@@ -1461,26 +1497,35 @@ function getHomePageEditorViewportBounds() {
   };
 }
 
-runtimeRichModal = window.IterpanoEditorRichModal?.createRichModalController({
-  richEditorModal,
-  richEditorModalContent,
-  richEditorSurface,
-  isHomePageRichEditorMode,
-  getHomePageEditorViewportBounds,
-  getViewportClampedInfoFrameSize,
-  getAnchoredInfoFramePosition,
-  getInfoHotspotFrameSize,
-  getHotspotViewportPoint,
-  parsePixelStyleValue,
-  normalizeInfoFrameSize,
-  normalizeInfoFramePosition,
-  normalizeInfoFrameViewport,
-  normalizeInfoFrameAnchorOffset,
-  minInfoFrameWidth: MIN_INFO_FRAME_WIDTH,
-  minInfoFrameHeight: MIN_INFO_FRAME_HEIGHT,
-  maxInfoFrameWidth: MAX_INFO_FRAME_WIDTH,
-  maxInfoFrameHeight: MAX_INFO_FRAME_HEIGHT
-});
+runtimeRichModal = safeCreateRuntimeEditorModule(
+  'rich-modal',
+  () => window.IterpanoEditorRichModal?.createRichModalController({
+    richEditorModal,
+    richEditorModalContent,
+    richEditorSurface,
+    isHomePageRichEditorMode,
+    getHomePageEditorViewportBounds,
+    getViewportClampedInfoFrameSize,
+    getAnchoredInfoFramePosition,
+    getInfoHotspotFrameSize,
+    getHotspotViewportPoint,
+    parsePixelStyleValue,
+    normalizeInfoFrameSize,
+    normalizeInfoFramePosition,
+    normalizeInfoFrameViewport,
+    normalizeInfoFrameAnchorOffset,
+    minInfoFrameWidth: MIN_INFO_FRAME_WIDTH,
+    minInfoFrameHeight: MIN_INFO_FRAME_HEIGHT,
+    maxInfoFrameWidth: MAX_INFO_FRAME_WIDTH,
+    maxInfoFrameHeight: MAX_INFO_FRAME_HEIGHT
+  }),
+  [
+    { label: 'richEditorModal', value: richEditorModal },
+    { label: 'richEditorModalContent', value: richEditorModalContent },
+    { label: 'richEditorSurface', value: richEditorSurface },
+    { label: 'IterpanoEditorRichModal', value: window.IterpanoEditorRichModal }
+  ]
+);
 
 function getRichContentTargetByContext(context) {
   if (!context) return null;
@@ -1854,39 +1899,62 @@ function getRichLayoutDirectColumns(layoutEl) {
   return Array.from(layoutEl.querySelectorAll(':scope > [data-col]')).filter((column) => column instanceof Element);
 }
 
-runtimeRichLayout = window.IterpanoEditorRichLayout?.createRichLayoutController({
-  richEditorModal,
-  richEditorSurface,
-  parsePixelStyleValue,
-  applyRichEditorModalResizeConstraints,
-  applyRichLayoutColumnWidths,
-  getRichLayoutDirectColumns,
-  getSelectedRichLayoutElement,
-  richLayoutColumnMinWidth: RICH_LAYOUT_COLUMN_MIN_WIDTH
-});
+runtimeRichLayout = safeCreateRuntimeEditorModule(
+  'rich-layout',
+  () => window.IterpanoEditorRichLayout?.createRichLayoutController({
+    richEditorModal,
+    richEditorSurface,
+    parsePixelStyleValue,
+    applyRichEditorModalResizeConstraints,
+    applyRichLayoutColumnWidths,
+    getRichLayoutDirectColumns,
+    getSelectedRichLayoutElement,
+    richLayoutColumnMinWidth: RICH_LAYOUT_COLUMN_MIN_WIDTH
+  }),
+  [
+    { label: 'richEditorModal', value: richEditorModal },
+    { label: 'richEditorSurface', value: richEditorSurface },
+    { label: 'IterpanoEditorRichLayout', value: window.IterpanoEditorRichLayout }
+  ]
+);
 
-runtimeRichSelection = window.IterpanoEditorRichSelection?.createRichSelectionController({
-  richEditorModal,
-  richEditorSurface,
-  syncRichEditorTypographyControls,
-  applyRichEditorModalResizeConstraints,
-  findClosestRichLayout,
-  updateRichLayoutBlockResizeHandle,
-  hideRichLayoutBlockResizeHandle
-});
+runtimeRichSelection = safeCreateRuntimeEditorModule(
+  'rich-selection',
+  () => window.IterpanoEditorRichSelection?.createRichSelectionController({
+    richEditorModal,
+    richEditorSurface,
+    syncRichEditorTypographyControls,
+    applyRichEditorModalResizeConstraints,
+    findClosestRichLayout,
+    updateRichLayoutBlockResizeHandle,
+    hideRichLayoutBlockResizeHandle
+  }),
+  [
+    { label: 'richEditorModal', value: richEditorModal },
+    { label: 'richEditorSurface', value: richEditorSurface },
+    { label: 'IterpanoEditorRichSelection', value: window.IterpanoEditorRichSelection }
+  ]
+);
 
-runtimeRichTypography = window.IterpanoEditorRichTypography?.createRichTypographyController({
-  richEditorSurface,
-  getActiveRichSizeInput: () => activeRichSizeInput,
-  isRangeInsideRichEditor,
-  sanitizeRichFontSizeValue,
-  sanitizeRichLineHeightValue,
-  sanitizeRichParagraphSpacingValue,
-  getRichBlockNodeForSelection,
-  getSavedRanges: getRichEditorSavedRanges,
-  setSavedRanges: setRichEditorSavedRanges,
-  clearSavedRanges: clearRichEditorSavedRanges
-});
+runtimeRichTypography = safeCreateRuntimeEditorModule(
+  'rich-typography',
+  () => window.IterpanoEditorRichTypography?.createRichTypographyController({
+    richEditorSurface,
+    getActiveRichSizeInput: () => activeRichSizeInput,
+    isRangeInsideRichEditor,
+    sanitizeRichFontSizeValue,
+    sanitizeRichLineHeightValue,
+    sanitizeRichParagraphSpacingValue,
+    getRichBlockNodeForSelection,
+    getSavedRanges: getRichEditorSavedRanges,
+    setSavedRanges: setRichEditorSavedRanges,
+    clearSavedRanges: clearRichEditorSavedRanges
+  }),
+  [
+    { label: 'richEditorSurface', value: richEditorSurface },
+    { label: 'IterpanoEditorRichTypography', value: window.IterpanoEditorRichTypography }
+  ]
+);
 
 function stopRichLayoutResize() {
   runtimeRichLayout?.stopResize();
@@ -3027,52 +3095,58 @@ function moveSceneSelectionBy(delta) {
   return true;
 }
 
+runtimeHotspotSelection = safeCreateRuntimeEditorModule(
+  'hotspot-selection',
+  () => window.IterpanoEditorHotspotSelection?.createHotspotSelectionController({
+    getSelectedScene,
+    getSelectedHotspotId: () => state.selectedHotspotId,
+    getPendingSceneLinkDraft: () => pendingSceneLinkDraft,
+    getSelectedSceneId: () => state.selectedSceneId,
+    normalizeInfoHotspotDisplayMode,
+  }),
+  [
+    { label: 'IterpanoEditorHotspotSelection', value: window.IterpanoEditorHotspotSelection }
+  ]
+);
+
 function getSelectedHotspot() {
-  const scene = getSelectedScene();
-  if (!scene) return null;
-  return scene.hotspots.find((hotspot) => hotspot.id === state.selectedHotspotId) || null;
+  return runtimeHotspotSelection?.getSelectedHotspot() || null;
 }
 
 function isSceneLinkHotspot(hotspot) {
-  return Boolean((hotspot?.contentBlocks || []).some((block) => block.type === 'scene'));
+  return runtimeHotspotSelection?.isSceneLinkHotspot(hotspot) || false;
 }
 
 function isInfoHotspot(hotspot) {
-  return Boolean(hotspot) && !isSceneLinkHotspot(hotspot);
+  return runtimeHotspotSelection?.isInfoHotspot(hotspot) || false;
 }
 
 function isQuickInfoHotspot(hotspot) {
-  return isInfoHotspot(hotspot) && normalizeInfoHotspotDisplayMode(hotspot.displayMode) === 'quick';
+  return runtimeHotspotSelection?.isQuickInfoHotspot(hotspot) || false;
 }
 
 function getSceneLinkHotspots(scene = getSelectedScene()) {
-  if (!scene) return [];
-  return (scene.hotspots || []).filter((hotspot) => isSceneLinkHotspot(hotspot));
+  return runtimeHotspotSelection?.getSceneLinkHotspots(scene) || [];
 }
 
 function getSceneInfoHotspots(scene = getSelectedScene()) {
-  if (!scene) return [];
-  return (scene.hotspots || []).filter((hotspot) => isInfoHotspot(hotspot));
+  return runtimeHotspotSelection?.getSceneInfoHotspots(scene) || [];
 }
 
 function getSceneLinkBlock(hotspot) {
-  if (!hotspot) return null;
-  return (hotspot.contentBlocks || []).find((block) => block.type === 'scene') || null;
+  return runtimeHotspotSelection?.getSceneLinkBlock(hotspot) || null;
 }
 
 function getSelectedLinkHotspot() {
-  const selected = getSelectedHotspot();
-  return isSceneLinkHotspot(selected) ? selected : null;
+  return runtimeHotspotSelection?.getSelectedLinkHotspot() || null;
 }
 
 function getSelectedInfoHotspot() {
-  const selected = getSelectedHotspot();
-  return isInfoHotspot(selected) ? selected : null;
+  return runtimeHotspotSelection?.getSelectedInfoHotspot() || null;
 }
 
 function getPendingSceneLinkDraftForSelectedScene() {
-  if (!pendingSceneLinkDraft) return null;
-  return pendingSceneLinkDraft.sceneId === state.selectedSceneId ? pendingSceneLinkDraft : null;
+  return runtimeHotspotSelection?.getPendingSceneLinkDraftForSelectedScene() || null;
 }
 
 function normalizeSceneLinkColorKey(key) {
@@ -3482,91 +3556,69 @@ function updateLinkNoteModeUi() {
   }
 }
 
+runtimeHotspotSidebar = safeCreateRuntimeEditorModule(
+  'hotspot-sidebar',
+  () => window.IterpanoEditorHotspotSidebar?.createHotspotSidebarController({
+    linkSelect,
+    linkTargetSceneSelect,
+    linkTargetAllGroupsToggle,
+    linkCommentInput,
+    linkNewColorSelect,
+    infoHotspotSelect,
+    infoHotspotModeSelect,
+    infoHotspotColorSelect,
+    btnAddSceneLink,
+    btnDeleteSceneLink,
+    btnRemoveAllLinks,
+    btnAddHotspot,
+    btnDeleteHotspot,
+    btnEditHotspot,
+    btnSaveHotspot,
+    getSelectedScene,
+    getSelectedLinkHotspot,
+    getPendingSceneLinkDraftForSelectedScene,
+    getLinkTargetSceneOptions,
+    getProjectScenes: () => state.project?.scenes || [],
+    getSelectedSceneId: () => state.selectedSceneId,
+    getPlacementMode: () => placementMode,
+    getNewLinkColorKey: () => state.newLinkColorKey,
+    getLinkTargetAllGroups: () => state.linkTargetAllGroups,
+    normalizeSceneLinkColorKey,
+    renderSceneLinkColorOptions,
+    updateLinkNoteModeUi,
+    formatTargetSceneOptionLabel,
+    getSceneLinkBlock,
+    getSceneInfoHotspots,
+    getSelectedInfoHotspot,
+    getInfoHotspotCreateMode: () => infoHotspotCreateMode,
+    setInfoHotspotCreateModeState: (nextMode) => {
+      infoHotspotCreateMode = nextMode;
+    },
+    getInfoHotspotEditMode: () => infoHotspotEditMode,
+    setInfoHotspotEditModeState: (nextMode) => {
+      infoHotspotEditMode = nextMode;
+    },
+    updateInfoHotspotModeButtons,
+    closeRichEditorModal,
+    getRichEditorModalVisible: () => richEditorModal?.classList.contains('visible'),
+    getInfoHotspotColorKey,
+    defaultInfoHotspotColorKey: DEFAULT_INFO_HOTSPOT_COLOR_KEY,
+    syncCustomColorSelect,
+    normalizeInfoHotspotDisplayMode,
+    defaultInfoHotspotDisplayMode: DEFAULT_INFO_HOTSPOT_DISPLAY_MODE,
+    isInfoHotspotInteractionModeActive,
+    getSceneLinkHotspots,
+    getPendingSceneLinkDraft: () => pendingSceneLinkDraft,
+    getSelectedHotspotId: () => state.selectedHotspotId,
+    scheduleMarkerRender,
+  }),
+  [
+    { label: 'IterpanoEditorHotspotSidebar', value: window.IterpanoEditorHotspotSidebar }
+  ]
+);
+
 function renderLinkEditor() {
-  if (!linkTargetSceneSelect || !linkCommentInput) return;
-
-  const selectedScene = getSelectedScene();
-  const linkHotspot = getSelectedLinkHotspot();
-  const pendingDraft = getPendingSceneLinkDraftForSelectedScene();
-  const scenes = getLinkTargetSceneOptions(state.selectedSceneId);
-  const allScenes = state.project?.scenes || [];
-  const currentSceneId = state.selectedSceneId;
-  const canEditLink = Boolean((linkHotspot || pendingDraft) && placementMode);
-  const lockGlobalLinkControls = placementMode;
-  const activeColorKey = normalizeSceneLinkColorKey(linkHotspot?.linkColorKey || pendingDraft?.linkColorKey || state.newLinkColorKey);
-  if (btnAddSceneLink) btnAddSceneLink.disabled = !selectedScene;
-  if (btnDeleteSceneLink) btnDeleteSceneLink.disabled = lockGlobalLinkControls;
-  if (btnRemoveAllLinks) btnRemoveAllLinks.disabled = lockGlobalLinkControls;
-  if (linkNewColorSelect) linkNewColorSelect.disabled = !canEditLink;
-  if (linkTargetAllGroupsToggle) {
-    linkTargetAllGroupsToggle.disabled = !canEditLink;
-    const flagLabel = linkTargetAllGroupsToggle.closest('.inline-flag');
-    flagLabel?.classList.toggle('disabled', !canEditLink);
-  }
-  renderSceneLinkColorOptions(linkNewColorSelect, activeColorKey);
-  updateLinkNoteModeUi();
-  linkCommentInput.placeholder = 'Comment (optional)';
-  if (linkTargetAllGroupsToggle) {
-    linkTargetAllGroupsToggle.checked = Boolean(state.linkTargetAllGroups);
-  }
-
-  linkTargetSceneSelect.innerHTML = '';
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = 'None';
-  linkTargetSceneSelect.appendChild(none);
-
-  scenes.forEach((scene) => {
-    if (scene.id === currentSceneId) {
-      return;
-    }
-    const option = document.createElement('option');
-    option.value = scene.id;
-    option.textContent = formatTargetSceneOptionLabel(scene, {
-      includeGroup: state.linkTargetAllGroups
-    });
-    linkTargetSceneSelect.appendChild(option);
-  });
-
-  if (!linkHotspot && !pendingDraft) {
-    linkCommentInput.value = '';
-    linkTargetSceneSelect.value = '';
-    linkCommentInput.disabled = true;
-    linkTargetSceneSelect.disabled = true;
-    return;
-  }
-
-  let selectedTarget = '';
-  let noteValue = '';
-
-  if (linkHotspot) {
-    const sceneLinkBlock = getSceneLinkBlock(linkHotspot);
-    if (sceneLinkBlock && typeof sceneLinkBlock.comment !== 'string') {
-      sceneLinkBlock.comment = '';
-    }
-    selectedTarget = sceneLinkBlock?.sceneId || '';
-    noteValue = sceneLinkBlock?.comment || '';
-  } else if (pendingDraft) {
-    selectedTarget = pendingDraft.targetSceneId || '';
-    noteValue = pendingDraft.comment || '';
-  }
-
-  if (selectedTarget && !scenes.some((scene) => scene.id === selectedTarget)) {
-    const targetScene = allScenes.find((scene) => scene.id === selectedTarget);
-    if (targetScene) {
-      const option = document.createElement('option');
-      option.value = targetScene.id;
-      option.textContent = state.linkTargetAllGroups
-        ? formatTargetSceneOptionLabel(targetScene, { includeGroup: true })
-        : `${targetScene.name || targetScene.id} (other group)`;
-      linkTargetSceneSelect.appendChild(option);
-    }
-  }
-
-  linkCommentInput.disabled = !canEditLink;
-  linkTargetSceneSelect.disabled = !canEditLink;
-  linkCommentInput.value = noteValue;
-  linkTargetSceneSelect.value = selectedTarget === currentSceneId ? '' : selectedTarget;
+  runtimeHotspotSidebar?.renderLinkEditor();
 }
 
 function getFloorplanForGroup(groupId) {
@@ -5335,13 +5387,59 @@ function askGenerateAllTilesExistingPolicy(alreadyTiledScenes) {
   });
 }
 
+runtimeHotspotModes = safeCreateRuntimeEditorModule(
+  'hotspot-modes',
+  () => window.IterpanoEditorHotspotModes?.createHotspotModesController({
+    btnAddHotspot,
+    btnEditHotspot,
+    btnSaveHotspot,
+    btnTogglePlacement,
+    viewerCanvas,
+    getSelectedScene,
+    getSelectedInfoHotspot,
+    getProjectHomePage,
+    updateHomePageButtons,
+    setHomePageEditMode,
+    getPlacementMode: () => placementMode,
+    setPlacementMode: (nextPlacementMode) => {
+      placementMode = nextPlacementMode;
+    },
+    getInfoHotspotCreateMode: () => infoHotspotCreateMode,
+    setInfoHotspotCreateModeState: (nextMode) => {
+      infoHotspotCreateMode = nextMode;
+    },
+    getInfoHotspotEditMode: () => infoHotspotEditMode,
+    setInfoHotspotEditModeState: (nextMode) => {
+      infoHotspotEditMode = nextMode;
+    },
+    getHomePageEditMode: () => homePageEditMode,
+    getPendingSceneLinkDraft: () => pendingSceneLinkDraft,
+    clearPendingSceneLinkDraft,
+    hideHotspotHoverCard,
+    closeHotspotPreview,
+    saveRichEditorModalContent,
+    saveRichSourceModalContent,
+    openRichEditorModal,
+    renderInfoHotspotList,
+    renderContentBlocks,
+    renderLinkEditor,
+    updateStatus,
+    getRichEditorModalVisible: () => richEditorModal?.classList.contains('visible'),
+    getRichSourceModalVisible: () => richSourceModal?.classList.contains('visible'),
+    getRichEditorContext: () => richEditorContext,
+    getRichSourceContext: () => richSourceContext,
+  }),
+  [
+    { label: 'IterpanoEditorHotspotModes', value: window.IterpanoEditorHotspotModes }
+  ]
+);
+
 function updatePlacementButtonLabel() {
-  if (!btnTogglePlacement) return;
-  btnTogglePlacement.textContent = placementMode ? 'Done' : 'Edit';
+  runtimeHotspotModes?.updatePlacementButtonLabel();
 }
 
 function isInfoHotspotInteractionModeActive() {
-  return infoHotspotCreateMode || infoHotspotEditMode;
+  return runtimeHotspotModes?.isInfoHotspotInteractionModeActive() || false;
 }
 
 function updateHomePageButtons() {
@@ -5361,105 +5459,23 @@ function updateHomePageButtons() {
 }
 
 function updateInfoHotspotModeButtons() {
-  if (btnAddHotspot) {
-    btnAddHotspot.classList.toggle('active', infoHotspotCreateMode);
-    btnAddHotspot.textContent = infoHotspotCreateMode ? 'New ON' : 'New';
-    btnAddHotspot.setAttribute('aria-pressed', infoHotspotCreateMode ? 'true' : 'false');
-  }
-  if (btnEditHotspot) {
-    btnEditHotspot.classList.toggle('active', infoHotspotEditMode);
-    btnEditHotspot.textContent = infoHotspotEditMode ? 'Edit ON' : 'Edit';
-    btnEditHotspot.setAttribute('aria-pressed', infoHotspotEditMode ? 'true' : 'false');
-  }
-  if (btnSaveHotspot) {
-    const canSave =
-      Boolean(getSelectedScene()) &&
-      Boolean(getSelectedInfoHotspot()) &&
-      isInfoHotspotInteractionModeActive();
-    btnSaveHotspot.disabled = !canSave;
-  }
-  updateHomePageButtons();
+  runtimeHotspotModes?.updateInfoHotspotModeButtons();
 }
 
 function setInfoHotspotCreateMode(nextMode, { silent = false } = {}) {
-  const next = Boolean(nextMode);
-  if (next && !getSelectedScene()) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-  if (next && placementMode) {
-    togglePlacementMode();
-  }
-  if (next && infoHotspotEditMode) {
-    infoHotspotEditMode = false;
-    if (richEditorModal?.classList.contains('visible')) {
-      saveRichEditorModalContent({ closeAfterSave: true, refreshPanel: true });
-    }
-  }
-  if (next && homePageEditMode) {
-    setHomePageEditMode(false, { silent: true });
-  }
-  infoHotspotCreateMode = next;
-  if (next) {
-    hideHotspotHoverCard();
-    closeHotspotPreview();
-  }
-  updateInfoHotspotModeButtons();
-  renderInfoHotspotList();
-  renderContentBlocks();
-  if (!silent) {
-    updateStatus(
-      next
-        ? 'New mode ON: double-click panorama to create info hotspots. Click New again to exit.'
-        : 'New mode OFF.'
-    );
-  }
+  runtimeHotspotModes?.setInfoHotspotCreateMode(nextMode, { silent });
 }
 
 function setInfoHotspotEditMode(nextMode, { silent = false } = {}) {
-  const next = Boolean(nextMode);
-  if (next) {
-    const hotspot = getSelectedInfoHotspot();
-    if (!hotspot) {
-      updateStatus('Select an info hotspot first.');
-      return;
-    }
-    if (placementMode) {
-      togglePlacementMode();
-    }
-    if (infoHotspotCreateMode) {
-      infoHotspotCreateMode = false;
-    }
-    if (homePageEditMode) {
-      setHomePageEditMode(false, { silent: true });
-    }
-    infoHotspotEditMode = true;
-    hideHotspotHoverCard();
-    closeHotspotPreview();
-  } else {
-    infoHotspotEditMode = false;
-    if (richEditorModal?.classList.contains('visible')) {
-      saveRichEditorModalContent({ closeAfterSave: true, refreshPanel: true });
-    }
-  }
-  updateInfoHotspotModeButtons();
-  renderInfoHotspotList();
-  renderContentBlocks();
-  if (!silent) {
-    updateStatus(
-      next
-        ? 'Edit mode ON: drag info hotspots or double-click panorama to move selected info hotspot. Click Edit again to exit.'
-        : 'Edit mode OFF.'
-    );
-  }
+  runtimeHotspotModes?.setInfoHotspotEditMode(nextMode, { silent });
 }
 
 function toggleInfoHotspotCreateMode() {
-  setInfoHotspotCreateMode(!infoHotspotCreateMode);
+  runtimeHotspotModes?.toggleInfoHotspotCreateMode();
 }
 
 function toggleInfoHotspotEditMode() {
-  setInfoHotspotEditMode(!infoHotspotEditMode);
+  runtimeHotspotModes?.toggleInfoHotspotEditMode();
 }
 
 function setHomePageEditMode(nextMode, { silent = false } = {}) {
@@ -5554,24 +5570,7 @@ function clearPendingSceneLinkDraft(shouldRender = true) {
 }
 
 function togglePlacementMode() {
-  const wasPlacementMode = placementMode;
-  const hadPendingBeforeToggle = Boolean(pendingSceneLinkDraft);
-  placementMode = !placementMode;
-  btnTogglePlacement.classList.toggle('active', placementMode);
-  updatePlacementButtonLabel();
-  if (wasPlacementMode && !placementMode && hadPendingBeforeToggle) {
-    clearPendingSceneLinkDraft(true);
-  }
-  renderLinkEditor();
-  viewerCanvas.classList.toggle('placement-mode', placementMode);
-  if (placementMode) {
-    hideHotspotHoverCard();
-  }
-  updateStatus(
-    placementMode
-      ? 'Edit mode enabled for Scene Links. Drag link hotspots or double-click panorama to place/move selected link.'
-      : (hadPendingBeforeToggle ? 'Pending link cancelled.' : 'Edit mode disabled.')
-  );
+  runtimeHotspotModes?.togglePlacementMode();
 }
 
 function getViewScale(active) {
@@ -5616,147 +5615,12 @@ function findMarkerAtScreen(clientX, clientY, radius) {
 }
 
 function renderInfoHotspotList() {
-  if (!infoHotspotSelect) return;
-  infoHotspotSelect.innerHTML = '';
-
-  const scene = getSelectedScene();
-  if (!scene) {
-    if (infoHotspotCreateMode) infoHotspotCreateMode = false;
-    if (infoHotspotEditMode) infoHotspotEditMode = false;
-    updateInfoHotspotModeButtons();
-    const option = document.createElement('option');
-    option.value = '';
-    option.textContent = 'No scene selected';
-    infoHotspotSelect.appendChild(option);
-    infoHotspotSelect.disabled = true;
-    if (infoHotspotColorSelect) {
-      renderSceneLinkColorOptions(infoHotspotColorSelect, DEFAULT_INFO_HOTSPOT_COLOR_KEY);
-      infoHotspotColorSelect.disabled = true;
-      syncCustomColorSelect(infoHotspotColorSelect);
-    }
-    if (btnAddHotspot) btnAddHotspot.disabled = true;
-    if (btnDeleteHotspot) btnDeleteHotspot.disabled = true;
-    if (btnEditHotspot) btnEditHotspot.disabled = true;
-    if (btnSaveHotspot) btnSaveHotspot.disabled = true;
-    return;
-  }
-
-  const infoHotspots = getSceneInfoHotspots(scene);
-  const selectedInfo = getSelectedInfoHotspot();
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = infoHotspots.length ? 'Select info hotspot' : 'No info hotspots in this scene';
-  infoHotspotSelect.appendChild(placeholder);
-
-  infoHotspots.forEach((hotspot) => {
-    const option = document.createElement('option');
-    option.value = hotspot.id;
-    option.textContent = hotspot.title || hotspot.id;
-    if (selectedInfo?.id === hotspot.id) {
-      option.selected = true;
-    }
-    infoHotspotSelect.appendChild(option);
-  });
-
-  if (!selectedInfo) {
-    if (infoHotspotEditMode) {
-      infoHotspotEditMode = false;
-      if (richEditorModal?.classList.contains('visible')) {
-        closeRichEditorModal();
-      }
-    }
-    infoHotspotSelect.value = '';
-  }
-  infoHotspotSelect.disabled = !infoHotspots.length;
-  if (infoHotspotColorSelect) {
-    renderSceneLinkColorOptions(
-      infoHotspotColorSelect,
-      selectedInfo ? getInfoHotspotColorKey(selectedInfo) : DEFAULT_INFO_HOTSPOT_COLOR_KEY
-    );
-    infoHotspotColorSelect.disabled = !selectedInfo || !isInfoHotspotInteractionModeActive();
-    syncCustomColorSelect(infoHotspotColorSelect);
-  }
-  if (infoHotspotModeSelect) {
-    infoHotspotModeSelect.value = selectedInfo
-      ? normalizeInfoHotspotDisplayMode(selectedInfo.displayMode)
-      : DEFAULT_INFO_HOTSPOT_DISPLAY_MODE;
-    infoHotspotModeSelect.disabled = !selectedInfo || !isInfoHotspotInteractionModeActive();
-  }
-  if (btnAddHotspot) btnAddHotspot.disabled = false;
-  if (btnDeleteHotspot) btnDeleteHotspot.disabled = !selectedInfo;
-  if (btnEditHotspot) btnEditHotspot.disabled = !selectedInfo;
-  if (btnSaveHotspot) btnSaveHotspot.disabled = !selectedInfo || !isInfoHotspotInteractionModeActive();
-  updateInfoHotspotModeButtons();
+  runtimeHotspotSidebar?.renderInfoHotspotList();
 }
 
 
 function renderHotspotList() {
-  renderInfoHotspotList();
-
-  if (linkSelect) {
-    linkSelect.innerHTML = '';
-  }
-  const scene = getSelectedScene();
-  if (!scene) {
-    if (linkSelect) {
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'No scene selected';
-      linkSelect.appendChild(option);
-      linkSelect.disabled = true;
-    }
-    if (btnDeleteSceneLink) {
-      btnDeleteSceneLink.disabled = true;
-    }
-    if (btnRemoveAllLinks) {
-      btnRemoveAllLinks.disabled = true;
-    }
-    return;
-  }
-
-  const linkHotspots = getSceneLinkHotspots(scene);
-  const pendingForScene = pendingSceneLinkDraft && pendingSceneLinkDraft.sceneId === scene.id
-    ? pendingSceneLinkDraft
-    : null;
-
-  if (linkSelect) {
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = linkHotspots.length ? 'Select link' : 'No links in this scene';
-    linkSelect.appendChild(placeholder);
-
-    if (pendingForScene) {
-      const pendingOption = document.createElement('option');
-      pendingOption.value = '__pending__';
-      pendingOption.textContent = `${pendingForScene.linkCode} (new)`;
-      pendingOption.selected = true;
-      linkSelect.appendChild(pendingOption);
-    }
-
-    linkHotspots.forEach((hotspot) => {
-      const option = document.createElement('option');
-      option.value = hotspot.id;
-      option.textContent = hotspot.linkCode || hotspot.title || hotspot.id;
-      if (hotspot.id === state.selectedHotspotId) {
-        option.selected = true;
-      }
-      linkSelect.appendChild(option);
-    });
-
-    const selectedIsLink = linkHotspots.some((hotspot) => hotspot.id === state.selectedHotspotId);
-    if (!selectedIsLink && !pendingForScene) {
-      linkSelect.value = '';
-    }
-    linkSelect.disabled = linkHotspots.length === 0 && !pendingForScene;
-  }
-  if (btnDeleteSceneLink) {
-    btnDeleteSceneLink.disabled = linkHotspots.length === 0;
-  }
-  if (btnRemoveAllLinks) {
-    btnRemoveAllLinks.disabled = linkHotspots.length === 0;
-  }
-
-  scheduleMarkerRender();
+  runtimeHotspotSidebar?.renderHotspotList();
 }
 
 function renderFloorplans() {
@@ -7537,106 +7401,51 @@ function refreshHotspotPanelsWithoutSceneSwitch() {
   scheduleMarkerRender();
 }
 
+runtimeHotspotActions = safeCreateRuntimeEditorModule(
+  'hotspot-actions',
+  () => window.IterpanoEditorHotspotActions?.createHotspotActionsController({
+    getSelectedScene,
+    getSelectedInfoHotspot,
+    getSceneInfoHotspots,
+    getSceneLinkHotspots,
+    getSelectedHotspot,
+    getPendingSceneLinkDraft: () => pendingSceneLinkDraft,
+    setPendingSceneLinkDraft: (nextDraft) => {
+      pendingSceneLinkDraft = nextDraft;
+    },
+    clearPendingSceneLinkDraft,
+    getDefaultLinkTargetSceneId,
+    getNextSceneLinkCode,
+    normalizeSceneLinkColorKey,
+    getNewLinkColorKey: () => state.newLinkColorKey,
+    isPlacementMode: () => placementMode,
+    togglePlacementMode,
+    refreshHotspotPanelsWithoutSceneSwitch,
+    renderHotspotList,
+    renderLinkEditor,
+    renderContentBlocks,
+    updateStatus,
+    autosave,
+    getSelectedHotspotId: () => state.selectedHotspotId,
+    setSelectedHotspotId: (nextHotspotId) => {
+      state.selectedHotspotId = nextHotspotId;
+    },
+  }),
+  [
+    { label: 'IterpanoEditorHotspotActions', value: window.IterpanoEditorHotspotActions }
+  ]
+);
+
 function deleteHotspot() {
-  const scene = getSelectedScene();
-  if (!scene) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-  const selected = getSelectedInfoHotspot();
-  if (!selected) {
-    updateStatus('Select an info hotspot first.');
-    return;
-  }
-  const index = scene.hotspots.findIndex((hotspot) => hotspot.id === selected.id);
-  if (index === -1) {
-    updateStatus('Select an info hotspot first.');
-    return;
-  }
-  scene.hotspots.splice(index, 1);
-  state.selectedHotspotId = getSceneInfoHotspots(scene)[0]?.id || getSceneLinkHotspots(scene)[0]?.id || null;
-  refreshHotspotPanelsWithoutSceneSwitch();
-  updateStatus('Info hotspot deleted.');
-  autosave();
+  runtimeHotspotActions?.deleteInfoHotspot();
 }
 
 function addSceneLinkBlock() {
-  const scene = getSelectedScene();
-  if (!scene) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-
-  if (pendingSceneLinkDraft && pendingSceneLinkDraft.sceneId !== scene.id) {
-    clearPendingSceneLinkDraft(false);
-  }
-
-  if (pendingSceneLinkDraft && pendingSceneLinkDraft.sceneId === scene.id) {
-    renderHotspotList();
-    renderLinkEditor();
-    updateStatus(`Link ${pendingSceneLinkDraft.linkCode} is not placed yet. Double-click to place it first, or press Done to cancel.`);
-    return;
-  }
-
-  const targetSceneId = getDefaultLinkTargetSceneId(scene);
-  const linkCode = getNextSceneLinkCode();
-  pendingSceneLinkDraft = {
-    sceneId: scene.id,
-    linkCode,
-    targetSceneId,
-    comment: '',
-    linkColorKey: normalizeSceneLinkColorKey(state.newLinkColorKey)
-  };
-  state.selectedHotspotId = null;
-
-  if (!placementMode) {
-    togglePlacementMode();
-  }
-  renderHotspotList();
-  renderLinkEditor();
-  renderContentBlocks();
-  updateStatus(`New link ${linkCode} ready. Double-click on the panorama to place it. Press Done to cancel.`);
+  runtimeHotspotActions?.addSceneLinkDraft();
 }
 
 function deleteSceneLinkBlock() {
-  const scene = getSelectedScene();
-  if (!scene) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-
-  const selected = getSelectedHotspot();
-  let hotspot = selected;
-  if (!hotspot || !(hotspot.contentBlocks || []).some((block) => block.type === 'scene')) {
-    hotspot = [...(scene.hotspots || [])].reverse().find((item) =>
-      (item.contentBlocks || []).some((block) => block.type === 'scene')
-    ) || null;
-  }
-
-  if (!hotspot) {
-    updateStatus('No link hotspot to delete.');
-    return;
-  }
-
-  const sceneIndex = (scene.hotspots || []).findIndex((item) => item.id === hotspot.id);
-  if (sceneIndex === -1) {
-    updateStatus('No link hotspot to delete.');
-    return;
-  }
-
-  const blocks = hotspot.contentBlocks || [];
-  const remaining = blocks.filter((block) => block.type !== 'scene');
-  if (!remaining.length) {
-    scene.hotspots.splice(sceneIndex, 1);
-    state.selectedHotspotId = scene.hotspots[0]?.id || null;
-  } else {
-    hotspot.contentBlocks = remaining;
-    state.selectedHotspotId = hotspot.id;
-  }
-
-  refreshHotspotPanelsWithoutSceneSwitch();
-  updateStatus('Link hotspot deleted.');
-  autosave();
+  runtimeHotspotActions?.deleteSceneLink();
 }
 
 async function removeAllSceneLinksForCurrentScene() {
