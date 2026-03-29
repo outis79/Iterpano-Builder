@@ -129,8 +129,11 @@ const btnFloorplanEdit = document.getElementById('btn-floorplan-edit');
 const btnFloorplanSelectAll = document.getElementById('btn-floorplan-select-all');
 const btnFloorplanDeleteNode = document.getElementById('btn-floorplan-delete-node');
 const btnFloorplanToggleLabels = document.getElementById('btn-floorplan-toggle-labels');
+const btnFloorplanToggleAliases = document.getElementById('btn-floorplan-toggle-aliases');
 const floorplanColorSelect = document.getElementById('floorplan-color-select');
 const btnFloorplanZoomReset = document.getElementById('btn-floorplan-zoom-reset');
+const btnFloorplanZoomOut = document.getElementById('btn-floorplan-zoom-out');
+const btnFloorplanZoomIn = document.getElementById('btn-floorplan-zoom-in');
 const tilingProgress = document.getElementById('tiling-progress');
 const tilingProgressFill = document.getElementById('tiling-progress-fill');
 const panoEditor = document.getElementById('pano-editor');
@@ -155,6 +158,10 @@ let runtimeHotspotSelection = null;
 let runtimeHotspotActions = null;
 let runtimeHotspotModes = null;
 let runtimeHotspotSidebar = null;
+let runtimeFloorplanSelection = null;
+let runtimeFloorplanModes = null;
+let runtimeFloorplanActions = null;
+let runtimeFloorplanRender = null;
 const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
@@ -210,8 +217,10 @@ let floorplanPlaceMode = false;
 let floorplanEditMode = false;
 let floorplanSelectAllMode = false;
 let floorplanShowLabels = false;
+let floorplanShowAliases = false;
 let floorplanMapWindowOpen = false;
 let floorplanPanState = null;
+let floorplanHoverActive = false;
 const floorplanImageMetricsById = new Map();
 let floorplanResizeObserver = null;
 let deleteLinksScopeResolver = null;
@@ -3621,31 +3630,34 @@ function renderLinkEditor() {
   runtimeHotspotSidebar?.renderLinkEditor();
 }
 
+runtimeFloorplanSelection = safeCreateRuntimeEditorModule(
+  'floorplan-selection',
+  () => window.IterpanoEditorFloorplanSelection?.createFloorplanSelectionController({
+    getProjectData: () => state.project,
+    getSelectedGroupId: () => state.selectedGroupId,
+    getSelectedSceneId: () => state.selectedSceneId,
+    getFloorplanSelectAllMode: () => floorplanSelectAllMode,
+    normalizeFloorplanColorKey,
+  }),
+  [
+    { label: 'IterpanoEditorFloorplanSelection', value: window.IterpanoEditorFloorplanSelection }
+  ]
+);
+
 function getFloorplanForGroup(groupId) {
-  if (!groupId) return null;
-  return state.project?.minimap?.floorplans?.find((fp) => fp.groupId === groupId) || null;
+  return runtimeFloorplanSelection?.getFloorplanForGroup(groupId) || null;
 }
 
 function getSelectedFloorplan() {
-  return getFloorplanForGroup(state.selectedGroupId);
+  return runtimeFloorplanSelection?.getSelectedFloorplan() || null;
 }
 
 function getSelectedFloorplanNode() {
-  const floorplan = getSelectedFloorplan();
-  const sceneId = state.selectedSceneId;
-  if (!floorplan || !sceneId) return null;
-  return (floorplan.nodes || []).find((node) => node.sceneId === sceneId) || null;
+  return runtimeFloorplanSelection?.getSelectedFloorplanNode() || null;
 }
 
 function getSelectedFloorplanNodes() {
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return [];
-  const nodes = floorplan.nodes || [];
-  if (floorplanSelectAllMode) {
-    return nodes.slice();
-  }
-  const selected = getSelectedFloorplanNode();
-  return selected ? [selected] : [];
+  return runtimeFloorplanSelection?.getSelectedFloorplanNodes() || [];
 }
 
 function sceneHasGeneratedTiles(scene) {
@@ -3721,10 +3733,7 @@ function normalizeFloorplanColorKey(key) {
 }
 
 function getSelectedFloorplanColorKey() {
-  const floorplan = getSelectedFloorplan();
-  const selectedNodes = getSelectedFloorplanNodes();
-  const keyFromSelection = selectedNodes[0]?.colorKey;
-  return normalizeFloorplanColorKey(keyFromSelection || floorplan?.markerColorKey || 'yellow');
+  return runtimeFloorplanSelection?.getSelectedFloorplanColorKey() || 'yellow';
 }
 
 function hexToRgb(hex) {
@@ -3764,128 +3773,39 @@ function getContrastTextColor(hex) {
 }
 
 function applyFloorplanNodeColorStyles(nodeElement, colorKey) {
-  const color = FLOORPLAN_COLOR_MAP[normalizeFloorplanColorKey(colorKey)];
-  nodeElement.style.setProperty('--floorplan-marker-color', color);
-  nodeElement.style.setProperty('--floorplan-marker-border', darkenHex(color, 0.24));
-  nodeElement.style.setProperty('--floorplan-marker-ring', withAlpha(color, 0.35));
-  nodeElement.style.setProperty('--floorplan-marker-text', getContrastTextColor(color));
+  runtimeFloorplanRender?.applyFloorplanNodeColorStyles(nodeElement, colorKey);
 }
 
 function updateFloorplanColorPaletteUi() {
-  if (!floorplanColorSelect) return;
-  const floorplan = getSelectedFloorplan();
-  const selectedKey = getSelectedFloorplanColorKey();
-  const disabled = !floorplan || (!floorplanEditMode && !floorplanPlaceMode);
-  floorplanColorSelect.innerHTML = '';
-  Object.keys(FLOORPLAN_COLOR_MAP).forEach((key) => {
-    const option = document.createElement('option');
-    option.value = key;
-    option.textContent = '⬤';
-    option.title = colorLabelFromKey(key);
-    option.style.color = FLOORPLAN_COLOR_MAP[key];
-    floorplanColorSelect.appendChild(option);
-  });
-  floorplanColorSelect.disabled = disabled;
-  floorplanColorSelect.value = selectedKey;
-  floorplanColorSelect.style.color = FLOORPLAN_COLOR_MAP[selectedKey];
+  runtimeFloorplanRender?.updateFloorplanColorPaletteUi();
 }
 
 function setSelectedFloorplanColor(colorKey) {
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return;
-  if (!floorplanEditMode && !floorplanPlaceMode) {
-    updateStatus('Enable Place or Edit to change map color.');
-    return;
-  }
-  const nextKey = normalizeFloorplanColorKey(colorKey);
-  floorplan.markerColorKey = nextKey;
-  const selectedNodes = getSelectedFloorplanNodes();
-  if (floorplanEditMode && selectedNodes.length) {
-    selectedNodes.forEach((node) => {
-      node.colorKey = nextKey;
-    });
-  }
-  renderFloorplans();
-  autosave();
+  runtimeFloorplanRender?.setSelectedFloorplanColor(colorKey);
 }
 
 function getFloorplanZoom(groupId = state.selectedGroupId) {
-  if (!groupId) return 1;
-  const value = floorplanZoomByGroup.get(groupId);
-  return Number.isFinite(value) ? value : 1;
+  return runtimeFloorplanRender?.getFloorplanZoom(groupId) ?? 1;
 }
 
 function getFloorplanImageMetrics(floorplan) {
-  if (!floorplan?.id) return null;
-  const storedWidth = Number(floorplan.imageWidth);
-  const storedHeight = Number(floorplan.imageHeight);
-  if (storedWidth > 0 && storedHeight > 0) {
-    return { width: storedWidth, height: storedHeight };
-  }
-  return floorplanImageMetricsById.get(floorplan.id) || null;
+  return runtimeFloorplanRender?.getFloorplanImageMetrics(floorplan) || null;
 }
 
 function setFloorplanImageMetrics(floorplan, width, height) {
-  if (!floorplan?.id) return;
-  const nextWidth = Math.round(Number(width) || 0);
-  const nextHeight = Math.round(Number(height) || 0);
-  if (nextWidth <= 0 || nextHeight <= 0) return;
-  floorplan.imageWidth = nextWidth;
-  floorplan.imageHeight = nextHeight;
-  floorplanImageMetricsById.set(floorplan.id, { width: nextWidth, height: nextHeight });
+  runtimeFloorplanRender?.setFloorplanImageMetrics(floorplan, width, height);
 }
 
 function syncFloorplanCanvasSize(canvas, floorplan) {
-  if (!canvas || !floorplan || !miniMap) return;
-  const metrics = getFloorplanImageMetrics(floorplan);
-  const zoom = getFloorplanZoom(floorplan.groupId || state.selectedGroupId);
-  if (metrics?.width > 0 && metrics?.height > 0) {
-    const availableWidth = Math.max(1, miniMap.clientWidth);
-    const availableHeight = Math.max(1, miniMap.clientHeight || 140);
-    const fitScale = Math.min(availableWidth / metrics.width, availableHeight / metrics.height);
-    const baseScale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
-    const widthPx = Math.max(1, Math.round(metrics.width * baseScale * zoom));
-    const heightPx = Math.max(1, Math.round(metrics.height * baseScale * zoom));
-    canvas.style.width = `${widthPx}px`;
-    canvas.style.minWidth = `${widthPx}px`;
-    canvas.style.height = `${heightPx}px`;
-    canvas.style.minHeight = `${heightPx}px`;
-    canvas.style.aspectRatio = `${metrics.width} / ${metrics.height}`;
-  } else {
-    const baseWidth = Math.max(1, miniMap.clientWidth);
-    const widthPx = Math.max(1, Math.round(baseWidth * zoom));
-    const fallbackHeight = Math.max(1, Math.round((miniMap.clientHeight || 140) * zoom));
-    canvas.style.width = `${widthPx}px`;
-    canvas.style.minWidth = `${widthPx}px`;
-    canvas.style.removeProperty('aspect-ratio');
-    canvas.style.height = `${fallbackHeight}px`;
-    canvas.style.minHeight = `${fallbackHeight}px`;
-  }
+  runtimeFloorplanRender?.syncFloorplanCanvasSize(canvas, floorplan);
 }
 
 function refreshFloorplanCanvasLayout() {
-  const floorplan = getSelectedFloorplan();
-  const canvas = miniMap?.querySelector('.floorplan-canvas');
-  if (!floorplan || !canvas || !miniMap) return;
-  const previousWidth = canvas.offsetWidth || 1;
-  const previousHeight = canvas.offsetHeight || 1;
-  const relativeCenterX = (miniMap.scrollLeft + (miniMap.clientWidth / 2)) / previousWidth;
-  const relativeCenterY = (miniMap.scrollTop + (miniMap.clientHeight / 2)) / previousHeight;
-  syncFloorplanCanvasSize(canvas, floorplan);
-  requestAnimationFrame(() => {
-    const nextWidth = canvas.offsetWidth || 1;
-    const nextHeight = canvas.offsetHeight || 1;
-    miniMap.scrollLeft = Math.max(0, (relativeCenterX * nextWidth) - (miniMap.clientWidth / 2));
-    miniMap.scrollTop = Math.max(0, (relativeCenterY * nextHeight) - (miniMap.clientHeight / 2));
-  });
+  runtimeFloorplanRender?.refreshFloorplanCanvasLayout();
 }
 
 function setFloorplanZoom(nextZoom) {
-  const groupId = state.selectedGroupId;
-  if (!groupId) return;
-  const clamped = Math.min(8, Math.max(0.5, nextZoom));
-  floorplanZoomByGroup.set(groupId, clamped);
-  renderFloorplans();
+  runtimeFloorplanRender?.setFloorplanZoom(nextZoom);
 }
 
 function zoomFloorplanAt(event, groupId) {
@@ -3899,16 +3819,21 @@ function zoomFloorplanAt(event, groupId) {
   const rect = miniMap.getBoundingClientRect();
   const anchorX = event.clientX - rect.left;
   const anchorY = event.clientY - rect.top;
+  const previousCanvas = miniMap.querySelector('.floorplan-canvas');
+  const previousWidth = previousCanvas?.offsetWidth || 1;
+  const previousHeight = previousCanvas?.offsetHeight || 1;
   const worldX = miniMap.scrollLeft + anchorX;
   const worldY = miniMap.scrollTop + anchorY;
 
-  floorplanZoomByGroup.set(groupId, nextZoom);
-  renderFloorplans();
+  setFloorplanZoom(nextZoom);
   requestAnimationFrame(() => {
-    const appliedZoom = getFloorplanZoom(groupId);
-    const scale = appliedZoom / oldZoom;
-    miniMap.scrollLeft = (worldX * scale) - anchorX;
-    miniMap.scrollTop = (worldY * scale) - anchorY;
+    const nextCanvas = miniMap.querySelector('.floorplan-canvas');
+    const nextWidth = nextCanvas?.offsetWidth || previousWidth;
+    const nextHeight = nextCanvas?.offsetHeight || previousHeight;
+    const scaleX = nextWidth / previousWidth;
+    const scaleY = nextHeight / previousHeight;
+    miniMap.scrollLeft = (worldX * scaleX) - anchorX;
+    miniMap.scrollTop = (worldY * scaleY) - anchorY;
   });
 }
 
@@ -3945,88 +3870,154 @@ function stopFloorplanPan() {
   window.removeEventListener('mouseup', stopFloorplanPan);
 }
 
+runtimeFloorplanModes = safeCreateRuntimeEditorModule(
+  'floorplan-modes',
+  () => window.IterpanoEditorFloorplanModes?.createFloorplanModesController({
+    btnFloorplanPlaceScene,
+    btnFloorplanEdit,
+    btnFloorplanSelectAll,
+    btnFloorplanToggleLabels,
+    btnFloorplanToggleAliases,
+    miniMap,
+    getFloorplanShowLabels: () => floorplanShowLabels,
+    setFloorplanShowLabelsState: (nextMode) => {
+      floorplanShowLabels = nextMode;
+    },
+    getFloorplanShowAliases: () => floorplanShowAliases,
+    setFloorplanShowAliasesState: (nextMode) => {
+      floorplanShowAliases = nextMode;
+    },
+    getFloorplanPlaceMode: () => floorplanPlaceMode,
+    setFloorplanPlaceModeState: (nextMode) => {
+      floorplanPlaceMode = nextMode;
+    },
+    getFloorplanEditMode: () => floorplanEditMode,
+    setFloorplanEditModeState: (nextMode) => {
+      floorplanEditMode = nextMode;
+    },
+    getFloorplanSelectAllMode: () => floorplanSelectAllMode,
+    setFloorplanSelectAllModeState: (nextMode) => {
+      floorplanSelectAllMode = nextMode;
+    },
+    getSelectedFloorplan,
+    stopFloorplanPan,
+    updateFloorplanColorPaletteUi,
+    updateFloorplanDeleteNodeUi,
+    updateFloorplanSelectAllUi,
+    renderFloorplans,
+    updateStatus,
+  }),
+  [
+    { label: 'IterpanoEditorFloorplanModes', value: window.IterpanoEditorFloorplanModes }
+  ]
+);
+
+runtimeFloorplanActions = safeCreateRuntimeEditorModule(
+  'floorplan-actions',
+  () => window.IterpanoEditorFloorplanActions?.createFloorplanActionsController({
+    miniMap,
+    getSelectedScene,
+    getSelectedFloorplan,
+    getSelectedSceneId: () => state.selectedSceneId,
+    getFloorplanEditMode: () => floorplanEditMode,
+    getFloorplanPlaceMode: () => floorplanPlaceMode,
+    getFloorplanSelectAllMode: () => floorplanSelectAllMode,
+    setFloorplanSelectAllModeState: (nextMode) => {
+      floorplanSelectAllMode = nextMode;
+    },
+    getFloorplanColorValue: () => floorplanColorSelect?.value,
+    normalizeFloorplanColorKey,
+    renderFloorplans,
+    autosave,
+    updateStatus,
+    selectScene,
+    zoomFloorplanAt,
+    startFloorplanPan,
+  }),
+  [
+    { label: 'IterpanoEditorFloorplanActions', value: window.IterpanoEditorFloorplanActions },
+    { label: 'miniMap', value: miniMap }
+  ]
+);
+
+runtimeFloorplanRender = safeCreateRuntimeEditorModule(
+  'floorplan-render',
+  () => window.IterpanoEditorFloorplanRender?.createFloorplanRenderController({
+    miniMap,
+    btnFloorplanPlaceScene,
+    btnFloorplanEdit,
+    btnFloorplanSelectAll,
+    btnFloorplanDeleteNode,
+    btnFloorplanToggleLabels,
+    btnFloorplanToggleAliases,
+    btnFloorplanZoomReset,
+    btnFloorplanZoomOut,
+    btnFloorplanZoomIn,
+    floorplanColorSelect,
+    state,
+    FLOORPLAN_COLOR_MAP,
+    colorLabelFromKey,
+    floorplanZoomByGroup,
+    floorplanImageMetricsById,
+    normalizeFloorplanColorKey,
+    getSelectedGroup,
+    getSelectedScene,
+    getSelectedFloorplan,
+    getSelectedFloorplanNodes,
+    getSelectedFloorplanColorKey,
+    getFloorplanPlaceMode: () => floorplanPlaceMode,
+    getFloorplanEditMode: () => floorplanEditMode,
+    getFloorplanSelectAllMode: () => floorplanSelectAllMode,
+    getFloorplanShowLabels: () => floorplanShowLabels,
+    getFloorplanShowAliases: () => floorplanShowAliases,
+    setFloorplanPlaceMode,
+    setFloorplanEditMode,
+    updateFloorplanLabelToggleUi,
+    updateFloorplanDeleteNodeUi,
+    updateFloorplanSelectAllUi,
+    stopFloorplanPan,
+    autosave,
+    updateStatus,
+    getSceneName,
+    getSceneAlias,
+    getRuntimeFloorplanActions: () => runtimeFloorplanActions,
+  }),
+  [
+    { label: 'IterpanoEditorFloorplanRender', value: window.IterpanoEditorFloorplanRender },
+    { label: 'miniMap', value: miniMap }
+  ]
+);
+
 function updateFloorplanLabelToggleUi() {
-  if (!btnFloorplanToggleLabels) return;
-  btnFloorplanToggleLabels.classList.toggle('active', floorplanShowLabels);
-  btnFloorplanToggleLabels.textContent = floorplanShowLabels ? 'Names ON' : 'Names OFF';
+  runtimeFloorplanModes?.updateFloorplanLabelToggleUi();
 }
 
 function setFloorplanShowLabels(nextMode) {
-  floorplanShowLabels = Boolean(nextMode);
-  updateFloorplanLabelToggleUi();
-  renderFloorplans();
+  runtimeFloorplanModes?.setFloorplanShowLabels(nextMode);
+}
+
+function setFloorplanShowAliases(nextMode) {
+  runtimeFloorplanModes?.setFloorplanShowAliases(nextMode);
 }
 
 function updateFloorplanPlaceUi() {
-  if (btnFloorplanPlaceScene) {
-    btnFloorplanPlaceScene.classList.toggle('active', floorplanPlaceMode);
-    btnFloorplanPlaceScene.textContent = floorplanPlaceMode ? 'Place ON' : 'Place';
-  }
+  runtimeFloorplanModes?.updateFloorplanPlaceUi();
 }
 
 function updateFloorplanEditUi() {
-  if (btnFloorplanEdit) {
-    btnFloorplanEdit.classList.toggle('active', floorplanEditMode);
-    btnFloorplanEdit.textContent = floorplanEditMode ? 'Edit ON' : 'Edit';
-  }
+  runtimeFloorplanModes?.updateFloorplanEditUi();
 }
 
 function setFloorplanSelectAllMode(nextMode, { silent = false } = {}) {
-  if (!floorplanEditMode) {
-    floorplanSelectAllMode = false;
-    updateFloorplanSelectAllUi();
-    return;
-  }
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan || !(floorplan.nodes || []).length) {
-    floorplanSelectAllMode = false;
-    updateFloorplanSelectAllUi();
-    return;
-  }
-  floorplanSelectAllMode = Boolean(nextMode);
-  if (!silent) {
-    updateStatus(floorplanSelectAllMode ? 'All map points selected.' : 'All map points unselected.');
-  }
-  updateFloorplanColorPaletteUi();
-  updateFloorplanDeleteNodeUi();
-  updateFloorplanSelectAllUi();
-  renderFloorplans();
+  runtimeFloorplanModes?.setFloorplanSelectAllMode(nextMode, { silent });
 }
 
 function setFloorplanPlaceMode(nextMode) {
-  floorplanPlaceMode = Boolean(nextMode);
-  if (floorplanPlaceMode) {
-    floorplanEditMode = false;
-    floorplanSelectAllMode = false;
-  }
-  if (floorplanPlaceMode) {
-    stopFloorplanPan();
-  }
-  if (miniMap) {
-    miniMap.classList.toggle('floorplan-pan-enabled', !floorplanPlaceMode && miniMap.classList.contains('has-floorplan'));
-  }
-  updateFloorplanPlaceUi();
-  updateFloorplanEditUi();
-  updateFloorplanColorPaletteUi();
-  updateFloorplanDeleteNodeUi();
-  updateFloorplanSelectAllUi();
+  runtimeFloorplanModes?.setFloorplanPlaceMode(nextMode);
 }
 
 function setFloorplanEditMode(nextMode) {
-  floorplanEditMode = Boolean(nextMode);
-  if (floorplanEditMode) {
-    floorplanPlaceMode = false;
-  } else {
-    floorplanSelectAllMode = false;
-  }
-  if (miniMap) {
-    miniMap.classList.toggle('floorplan-pan-enabled', !floorplanPlaceMode && miniMap.classList.contains('has-floorplan'));
-  }
-  updateFloorplanPlaceUi();
-  updateFloorplanEditUi();
-  updateFloorplanColorPaletteUi();
-  updateFloorplanDeleteNodeUi();
-  updateFloorplanSelectAllUi();
+  runtimeFloorplanModes?.setFloorplanEditMode(nextMode);
 }
 
 function updateMapWindowBounds() {
@@ -5624,244 +5615,45 @@ function renderHotspotList() {
 }
 
 function renderFloorplans() {
-  stopFloorplanPan();
-  const group = getSelectedGroup();
-  const setFloorplanControlsState = ({ hasFloorplan = false, hasSceneSelection = false } = {}) => {
-    if (btnFloorplanPlaceScene) btnFloorplanPlaceScene.disabled = !hasFloorplan || !hasSceneSelection;
-    if (btnFloorplanEdit) btnFloorplanEdit.disabled = !hasFloorplan;
-    if (btnFloorplanSelectAll) btnFloorplanSelectAll.disabled = true;
-    if (btnFloorplanDeleteNode) btnFloorplanDeleteNode.disabled = true;
-    if (btnFloorplanToggleLabels) btnFloorplanToggleLabels.disabled = !hasFloorplan;
-    if (btnFloorplanZoomReset) btnFloorplanZoomReset.disabled = !hasFloorplan;
-  };
-  if (!group) {
-    miniMap.classList.remove('has-floorplan');
-    miniMap.classList.remove('floorplan-pan-enabled');
-    miniMap.innerHTML = '<div class="mini-map-placeholder"></div>';
-    setFloorplanControlsState();
-    setFloorplanPlaceMode(false);
-    setFloorplanEditMode(false);
-    updateFloorplanColorPaletteUi();
-    return;
-  }
-
-  const selected = getSelectedFloorplan();
-  const hasSceneSelection = Boolean(getSelectedScene());
-  state.selectedFloorplanId = selected?.id || null;
-  miniMap.innerHTML = '';
-  if (!selected) {
-    miniMap.classList.remove('has-floorplan');
-    miniMap.classList.remove('floorplan-pan-enabled');
-    miniMap.innerHTML = '<div class="mini-map-placeholder"></div>';
-    setFloorplanControlsState();
-    setFloorplanPlaceMode(false);
-    setFloorplanEditMode(false);
-    updateFloorplanColorPaletteUi();
-  } else {
-  miniMap.classList.add('has-floorplan');
-  miniMap.classList.toggle('floorplan-pan-enabled', !floorplanPlaceMode);
-  setFloorplanControlsState({ hasFloorplan: true, hasSceneSelection });
-  if (!hasSceneSelection) {
-    setFloorplanPlaceMode(false);
-  }
-  const canvas = document.createElement('div');
-  canvas.className = 'floorplan-canvas';
-
-  const img = document.createElement('img');
-  img.className = 'floorplan-image';
-  img.alt = selected?.name || 'Floorplan';
-  img.addEventListener('load', () => {
-    setFloorplanImageMetrics(selected, img.naturalWidth, img.naturalHeight);
-    syncFloorplanCanvasSize(canvas, selected);
-  });
-  img.src = selected?.dataUrl || selected?.path || '';
-  if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-    setFloorplanImageMetrics(selected, img.naturalWidth, img.naturalHeight);
-  }
-  canvas.appendChild(img);
-  syncFloorplanCanvasSize(canvas, selected);
-
-  const nodes = selected?.nodes || [];
-  const selectedSceneIds = new Set(
-    (state.multiSelectedSceneIds || []).filter((sceneId) =>
-      (state.project?.scenes || []).some((scene) => scene.id === sceneId && scene.groupId === group.id)
-    )
-  );
-  if (!selectedSceneIds.size && state.selectedSceneId) {
-    selectedSceneIds.add(state.selectedSceneId);
-  }
-  nodes.forEach((node, index) => {
-    const dot = document.createElement('div');
-    const isActive = floorplanSelectAllMode || selectedSceneIds.has(node.sceneId);
-    dot.className = `floorplan-node${isActive ? ' active' : ''}`;
-    dot.style.left = `${node.x * 100}%`;
-    dot.style.top = `${node.y * 100}%`;
-    dot.dataset.index = String(index);
-    applyFloorplanNodeColorStyles(dot, node.colorKey || selected.markerColorKey);
-
-    const label = document.createElement('div');
-    label.className = 'floorplan-label';
-    if (floorplanShowLabels) {
-      label.classList.add('visible');
-    }
-    label.textContent = getSceneName(node.sceneId);
-    dot.appendChild(label);
-
-    dot.addEventListener('mousedown', (event) => startDrag(event, index));
-    dot.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (floorplanSelectAllMode) {
-        floorplanSelectAllMode = false;
-      }
-      if (state.selectedSceneId !== node.sceneId) {
-        selectScene(node.sceneId);
-      } else {
-        renderFloorplans();
-      }
-    });
-    dot.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      if (!floorplanEditMode) {
-        updateStatus('Enable Edit to modify map points.');
-        return;
-      }
-      removeFloorplanNode(index);
-    });
-    canvas.appendChild(dot);
-  });
-
-  canvas.addEventListener('click', (event) => {
-    if (!floorplanPlaceMode) {
-      return;
-    }
-    const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    addFloorplanNode(x, y);
-  });
-  canvas.addEventListener('wheel', (event) => zoomFloorplanAt(event, group.id), { passive: false });
-  canvas.addEventListener('mousedown', startFloorplanPan);
-
-  miniMap.appendChild(canvas);
-  }
-  updateFloorplanLabelToggleUi();
-  updateFloorplanColorPaletteUi();
-  updateFloorplanDeleteNodeUi();
-  updateFloorplanSelectAllUi();
+  runtimeFloorplanRender?.renderFloorplans();
 }
 
 function addFloorplanNode(x, y) {
-  const scene = getSelectedScene();
-  const floorplan = getSelectedFloorplan();
-  if (!scene || !floorplan) return;
-  if (scene.groupId !== floorplan.groupId) return;
-
-  const existing = floorplan.nodes.find((node) => node.sceneId === scene.id);
-  if (existing) {
-    updateStatus(`Scene "${scene.name}" is already on the map.`);
-    return;
-  }
-  const selectedColor = normalizeFloorplanColorKey(
-    floorplanColorSelect?.value || floorplan.markerColorKey || 'yellow'
-  );
-  floorplan.nodes.push({ sceneId: scene.id, x, y, rotation: 0, colorKey: selectedColor });
-
-  renderFloorplans();
-  updateStatus(`Scene "${scene.name}" placed on map.`);
-  autosave();
+  runtimeFloorplanActions?.addFloorplanNode(x, y);
 }
 
 function removeFloorplanNode(index) {
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return;
-  floorplan.nodes.splice(index, 1);
-  renderFloorplans();
-  autosave();
+  runtimeFloorplanActions?.removeFloorplanNode(index);
 }
 
 function deleteSelectedFloorplanNode() {
-  if (!floorplanEditMode) {
-    updateStatus('Enable Edit to delete map points.');
-    return;
-  }
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return;
-  if (floorplanSelectAllMode) {
-    const total = (floorplan.nodes || []).length;
-    if (!total) {
-      updateStatus('No map points to delete.');
-      return;
-    }
-    floorplan.nodes = [];
-    floorplanSelectAllMode = false;
-    renderFloorplans();
-    updateStatus(`Deleted ${total} map point(s).`);
-    autosave();
-    return;
-  }
-  const scene = getSelectedScene();
-  if (!scene) return;
-  const index = (floorplan.nodes || []).findIndex((node) => node.sceneId === scene.id);
-  if (index === -1) {
-    updateStatus('Selected scene is not placed on the map.');
-    return;
-  }
-  floorplan.nodes.splice(index, 1);
-  renderFloorplans();
-  updateStatus(`Map point removed for scene "${scene.name}".`);
-  autosave();
+  runtimeFloorplanActions?.deleteSelectedFloorplanNode();
 }
 
 function rotateFloorplanNode(index, delta) {
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return;
-  const node = floorplan.nodes[index];
-  if (!node) return;
-  const next = (node.rotation || 0) + delta;
-  node.rotation = (next + 360) % 360;
-  renderFloorplans();
-  autosave();
+  runtimeFloorplanActions?.rotateFloorplanNode(index, delta);
 }
 
 function startDrag(event, index) {
-  event.stopPropagation();
-  if (!floorplanEditMode) {
-    return;
-  }
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan) return;
-  dragState = { index, floorplanId: floorplan.id };
-  window.addEventListener('mousemove', handleDrag);
-  window.addEventListener('mouseup', stopDrag);
+  runtimeFloorplanActions?.startDrag(event, index);
 }
 
 function handleDrag(event) {
-  if (!dragState) return;
-  const floorplan = getSelectedFloorplan();
-  if (!floorplan || floorplan.id !== dragState.floorplanId) return;
-  const canvas = miniMap.querySelector('.floorplan-canvas');
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
-  const node = floorplan.nodes[dragState.index];
-  if (!node) return;
-  node.x = Math.min(Math.max(x, 0), 1);
-  node.y = Math.min(Math.max(y, 0), 1);
-  renderFloorplans();
+  // handled inside runtimeFloorplanActions
 }
 
 function stopDrag() {
-  if (!dragState) return;
-  dragState = null;
-  window.removeEventListener('mousemove', handleDrag);
-  window.removeEventListener('mouseup', stopDrag);
-  autosave();
+  runtimeFloorplanActions?.stopDrag();
 }
 
 function getSceneName(sceneId) {
   const scene = state.project?.scenes.find((item) => item.id === sceneId);
   return scene?.name || sceneId;
+}
+
+function getSceneAlias(sceneId) {
+  const scene = state.project?.scenes.find((item) => item.id === sceneId);
+  return String(scene?.alias || '').trim();
 }
 
 function renderContentBlocks() {
@@ -9383,6 +9175,10 @@ btnFloorplanToggleLabels?.addEventListener('click', () => {
   if (btnFloorplanToggleLabels.disabled) return;
   setFloorplanShowLabels(!floorplanShowLabels);
 });
+btnFloorplanToggleAliases?.addEventListener('click', () => {
+  if (btnFloorplanToggleAliases.disabled) return;
+  setFloorplanShowAliases(!floorplanShowAliases);
+});
 btnFloorplanExpand?.addEventListener('click', () => {
   setFloorplanMapWindowOpen(!floorplanMapWindowOpen);
 });
@@ -9393,6 +9189,67 @@ floorplanColorSelect?.addEventListener('change', (event) => {
 btnFloorplanZoomReset?.addEventListener('click', () => {
   setFloorplanZoom(1);
 });
+btnFloorplanZoomOut?.addEventListener('click', () => {
+  setFloorplanZoom(getFloorplanZoom() * 0.9);
+});
+btnFloorplanZoomIn?.addEventListener('click', () => {
+  setFloorplanZoom(getFloorplanZoom() * 1.1);
+});
+function isPointerInsideFloorplanMap(event) {
+  if (!miniMap || !getSelectedFloorplan()) return false;
+  const rect = miniMap.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+  return (
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
+}
+
+function normalizeLegacyWheelEvent(event) {
+  if (typeof event.deltaY === 'number') return event;
+  if (typeof event.wheelDelta === 'number') {
+    event.deltaY = -event.wheelDelta;
+    return event;
+  }
+  if (typeof event.detail === 'number') {
+    event.deltaY = event.detail * 40;
+    return event;
+  }
+  return event;
+}
+
+miniMap?.addEventListener('mouseenter', () => {
+  floorplanHoverActive = true;
+});
+miniMap?.addEventListener('mouseleave', () => {
+  floorplanHoverActive = false;
+});
+miniMap?.addEventListener('wheel', (event) => {
+  if (!isPointerInsideFloorplanMap(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
+}, { passive: false, capture: true });
+miniMap?.addEventListener('mousewheel', (event) => {
+  if (!isPointerInsideFloorplanMap(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
+}, { passive: false, capture: true });
+window.addEventListener('wheel', (event) => {
+  if (!floorplanHoverActive && !isPointerInsideFloorplanMap(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
+}, { passive: false, capture: true });
+window.addEventListener('mousewheel', (event) => {
+  if (!floorplanHoverActive && !isPointerInsideFloorplanMap(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
+}, { passive: false, capture: true });
 btnUploadPanorama.addEventListener('click', () => filePanorama.click());
 btnGenerateTiles.addEventListener('click', generateTilesForSelectedScenes);
 btnGenerateAllTiles?.addEventListener('click', generateAllTiles);
