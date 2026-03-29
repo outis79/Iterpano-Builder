@@ -55,6 +55,7 @@ The project is operational and currently includes:
 - refactoring status: builder scene/group authoring flow extraction started; scene/group selection, actions, and sidebar rendering now live in dedicated editor modules
 - refactoring status: builder project I/O extraction started; project I/O utils, export actions, and import actions now live in dedicated editor modules
 - refactoring status: builder shared orchestration extraction started; bootstrap/init, render coordination, global event wiring, and shared editor UI helpers now live in dedicated editor modules
+- refactoring status: builder hotspot UI helpers extraction started; hotspot visual styling, preview sizing, and scene-link target UI helpers now live in a dedicated editor module
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -93,6 +94,7 @@ Completed visual editor extraction phases:
 - Phase 21: `global render orchestration` -> `editor/runtime-editor-render.js`
 - Phase 22: `global event wiring` -> `editor/runtime-editor-events.js`
 - Phase 23: `shared editor UI helpers` -> `editor/runtime-editor-ui.js`
+- Phase 24: `hotspot UI helpers` -> `editor/runtime-hotspot-ui.js`
 
 Current result:
 - `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
@@ -105,6 +107,7 @@ Current result:
 - scene/group authoring flow now delegates selection, mutations, sorting/label mode, and sidebar rendering to dedicated editor modules
 - project import/export flow now delegates file/runtime helpers, export actions, and import actions to dedicated editor modules
 - shared editor orchestration now delegates bootstrap/init safety, render coordination, global DOM event wiring, and common editor UI helpers to dedicated editor modules
+- hotspot visual styling and preview/scene-link UI helpers now delegate to a dedicated editor module
 - runtime editor modules are created through guarded initialization helpers to reduce bootstrap-failure impact during refactors
 
 ## Editor/Viewer Synchronization
@@ -162,6 +165,7 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `editor/runtime-editor-render.js`: extracted editor-wide render orchestration controller
 - `editor/runtime-editor-events.js`: extracted global editor event wiring controller
 - `editor/runtime-editor-ui.js`: extracted shared editor UI coordination controller
+- `editor/runtime-hotspot-ui.js`: extracted hotspot visual styling and preview UI controller
 - `editor/tiler.worker.js`: equirectangular -> cubemap tiling worker
 - `editor/vendor/jszip.min.js`: ZIP export support
 - `viewer/index.html`: viewer UI
