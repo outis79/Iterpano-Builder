@@ -168,6 +168,9 @@ let runtimeSceneSidebar = null;
 let runtimeProjectIoUtils = null;
 let runtimeProjectExport = null;
 let runtimeProjectImport = null;
+let runtimeEditorRender = null;
+let runtimeEditorEvents = null;
+let runtimeEditorUi = null;
 const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
@@ -236,35 +239,13 @@ let richEditorContext = null;
 let richSourceContext = null;
 let richEditorSavedRange = null;
 let richEditorSavedExpandedRange = null;
-function reportRuntimeEditorModuleFailure(moduleName, reason, error = null) {
-  const message = `[Iterpano Builder] Runtime module init failed: ${moduleName}${reason ? ` (${reason})` : ''}`;
-  runtimeEditorModuleFailures.push({ moduleName, reason, error });
-  if (error) {
-    console.error(message, error);
-  } else {
-    console.error(message);
-  }
-}
-
 function safeCreateRuntimeEditorModule(moduleName, factory, requiredDeps = []) {
-  const missing = requiredDeps
-    .filter((entry) => !entry || !entry.value)
-    .map((entry) => entry?.label || 'unknown');
-  if (missing.length) {
-    reportRuntimeEditorModuleFailure(moduleName, `missing dependencies: ${missing.join(', ')}`);
-    return null;
-  }
-  try {
-    const instance = typeof factory === 'function' ? factory() : null;
-    if (!instance) {
-      reportRuntimeEditorModuleFailure(moduleName, 'factory returned empty module');
-      return null;
-    }
-    return instance;
-  } catch (error) {
-    reportRuntimeEditorModuleFailure(moduleName, 'exception during initialization', error);
-    return null;
-  }
+  return window.IterpanoEditorBootstrap?.safeCreateRuntimeEditorModule(
+    runtimeEditorModuleFailures,
+    moduleName,
+    factory,
+    requiredDeps
+  ) || null;
 }
 
 function getRichEditorSavedRanges() {
@@ -2928,51 +2909,304 @@ function loadProject(project) {
 }
 
 function renderAll() {
-  syncOpenRichEditorContexts();
-  updateInfoHotspotModeButtons();
-  renderSceneGroupOptions();
-  renderSceneList();
-  renderHotspotList();
-  renderLinkEditor();
-  renderContentBlocks();
-  updateSceneTitle();
-  syncSceneFovInput();
-  renderFloorplans();
-  switchEditorScene();
+  runtimeEditorRender?.renderAll();
 }
 
 function syncOpenRichEditorContexts() {
-  if (richEditorModal?.classList.contains('visible') && !getInfoHotspotByContext(richEditorContext)) {
-    closeRichEditorModal();
-    if (infoHotspotEditMode) {
-      infoHotspotEditMode = false;
-      updateInfoHotspotModeButtons();
-    }
-  }
-  if (richSourceModal?.classList.contains('visible') && !getInfoHotspotByContext(richSourceContext)) {
-    closeRichSourceModal();
-  }
-  if (previewModal?.classList.contains('visible') && !getPreviewHotspotByContext()) {
-    closeHotspotPreview();
-  }
+  runtimeEditorRender?.syncOpenRichEditorContexts();
 }
 
 function updateSceneTitle() {
-  const scene = getSelectedScene();
-  sceneTitle.textContent = scene ? `Scene: ${scene.name}` : 'Scene: -';
+  runtimeEditorRender?.updateSceneTitle();
 }
 
 function syncSceneFovInput() {
-  if (!projectFovInput) return;
-  const scene = getSelectedScene();
-  if (!scene) {
-    projectFovInput.value = '1.4';
-    projectFovInput.disabled = true;
-    return;
-  }
-  projectFovInput.disabled = false;
-  projectFovInput.value = String(Number(getSelectedSceneFov().toFixed(2)));
+  runtimeEditorRender?.syncSceneFovInput();
 }
+
+runtimeEditorRender = safeCreateRuntimeEditorModule(
+  'editor-render',
+  () => window.IterpanoEditorRender?.createEditorRenderController({
+    richEditorModal,
+    richSourceModal,
+    previewModal,
+    closeRichEditorModal,
+    getRichEditorHotspotByContext: () => getInfoHotspotByContext(richEditorContext),
+    getRichSourceHotspotByContext: () => getInfoHotspotByContext(richSourceContext),
+    getIsInfoHotspotEditMode: () => infoHotspotEditMode,
+    setIsInfoHotspotEditMode: (value) => {
+      infoHotspotEditMode = Boolean(value);
+    },
+    updateInfoHotspotModeButtons,
+    getPreviewHotspotByContext,
+    closeRichSourceModal,
+    closeHotspotPreview,
+    getSelectedScene,
+    sceneTitle,
+    projectFovInput,
+    getSelectedSceneFov,
+    renderSceneGroupOptions,
+    renderSceneList,
+    renderHotspotList,
+    renderLinkEditor,
+    renderContentBlocks,
+    renderFloorplans,
+    switchEditorScene,
+  }),
+  [
+    { label: 'IterpanoEditorRender', value: window.IterpanoEditorRender }
+  ]
+);
+
+runtimeEditorEvents = safeCreateRuntimeEditorModule(
+  'editor-events',
+  () => window.IterpanoEditorEvents?.createEditorEventsController({
+    state,
+    windowRef: window,
+    documentRef: document,
+    btnSave,
+    btnExport,
+    btnExportPackage,
+    btnExportStatic,
+    btnImport,
+    btnUploadFloorplan,
+    btnDeleteFloorplan,
+    btnFloorplanPlaceScene,
+    btnFloorplanEdit,
+    btnFloorplanSelectAll,
+    btnFloorplanDeleteNode,
+    btnFloorplanToggleLabels,
+    btnFloorplanToggleAliases,
+    btnFloorplanExpand,
+    floorplanColorSelect,
+    btnFloorplanZoomReset,
+    btnFloorplanZoomOut,
+    btnFloorplanZoomIn,
+    miniMap,
+    btnUploadPanorama,
+    btnGenerateTiles,
+    btnGenerateAllTiles,
+    btnTilesInfo,
+    btnDeleteSelectedScenes,
+    btnPauseTiles,
+    btnResumeTiles,
+    btnTogglePlacement,
+    btnSetMainScene,
+    btnSetOrientation,
+    btnAddSceneLink,
+    btnDeleteSceneLink,
+    btnRemoveAllLinks,
+    btnEditHotspot,
+    btnSaveHotspot,
+    btnToggleLinksPanel,
+    linksPanelBody,
+    btnToggleProjectPanel,
+    projectPanelBody,
+    btnToggleGroupsPanel,
+    groupsPanelBody,
+    btnToggleScenesPanel,
+    scenesPanelBody,
+    btnSceneSortName,
+    btnSceneSortUpload,
+    btnSceneLabelMode,
+    btnToggleMapPanel,
+    mapPanelBody,
+    btnToggleSceneActionsPanel,
+    sceneActionsPanelBody,
+    btnCancelTiles,
+    btnClosePreview,
+    btnHomePagePreviewStart,
+    previewModal,
+    previewModalContent,
+    btnRichSourceClose,
+    btnRichSourceSave,
+    richSourceTextarea,
+    richEditorSurface,
+    richEditorModal,
+    btnEditHomePage,
+    btnSaveHomePage,
+    btnViewHomePage,
+    btnDeleteLinksScene,
+    btnDeleteLinksGroup,
+    btnDeleteLinksCancel,
+    btnDuplicatePanoramaProceed,
+    btnDuplicatePanoramaAcceptAll,
+    btnDuplicatePanoramaSkip,
+    btnDuplicatePanoramaSkipAll,
+    btnDuplicatePanoramaList,
+    btnDuplicatePanoramaCancel,
+    btnCloseDuplicatePanoramaList,
+    btnGenerateAllTilesSkip,
+    btnGenerateAllTilesOverwrite,
+    btnGenerateAllTilesCancel,
+    deleteLinksScopeModal,
+    duplicatePanoramaModal,
+    duplicatePanoramaListModal,
+    generateAllTilesModal,
+    mapWindowBackdrop,
+    fileImport,
+    fileFloorplan,
+    filePanorama,
+    saveDraft,
+    exportProject,
+    exportProjectPackageZip,
+    exportStaticPackage,
+    updateStatus,
+    deleteFloorplan,
+    getFloorplanPlaceMode: () => floorplanPlaceMode,
+    setFloorplanPlaceMode,
+    getFloorplanEditMode: () => floorplanEditMode,
+    setFloorplanEditMode,
+    getFloorplanSelectAllMode: () => floorplanSelectAllMode,
+    setFloorplanSelectAllMode,
+    deleteSelectedFloorplanNode,
+    getFloorplanShowLabels: () => floorplanShowLabels,
+    setFloorplanShowLabels,
+    getFloorplanShowAliases: () => floorplanShowAliases,
+    setFloorplanShowAliases,
+    getFloorplanMapWindowOpen: () => floorplanMapWindowOpen,
+    setFloorplanMapWindowOpen,
+    setSelectedFloorplanColor,
+    setFloorplanZoom,
+    getFloorplanZoom,
+    getSelectedFloorplan,
+    zoomFloorplanAt,
+    setFloorplanHoverActive: (value) => {
+      floorplanHoverActive = Boolean(value);
+    },
+    getFloorplanHoverActive: () => floorplanHoverActive,
+    uploadPanoramaFiles,
+    generateTilesForSelectedScenes,
+    generateAllTiles,
+    showTileSizingInfo,
+    deleteSelectedScenes,
+    pauseTiling,
+    resumeTiling,
+    togglePlacementMode,
+    setMainSceneForSelectedGroup,
+    setSceneOrientationById,
+    addSceneLinkBlock,
+    deleteSceneLinkBlock,
+    removeAllSceneLinksForCurrentScene,
+    editSelectedInfoHotspot,
+    saveSelectedInfoHotspotState,
+    toggleSection,
+    toggleSceneSort,
+    toggleSceneLabelMode,
+    tilerWorkerRef: () => tilerWorker,
+    getActiveTilingRequestId: () => activeTilingRequestId,
+    closeHotspotPreview,
+    startTourFromHomePagePreview,
+    getQuickPreviewOpenHotspotId: () => quickPreviewOpenHotspotId,
+    setQuickPreviewHoverModal: (value) => {
+      quickPreviewHoverModal = Boolean(value);
+    },
+    cancelQuickPreviewClose,
+    scheduleQuickPreviewClose,
+    maybeStartPreviewModalDrag,
+    saveRichSourceModalContent,
+    maybeStartRichLayoutResize,
+    maybeStartRichEditorDrag,
+    saveRichEditorModalContent,
+    getSelectedRichLayoutElement: () => selectedRichLayoutElement,
+    findClosestRichLayout,
+    setSelectedRichLayoutElement,
+    getRichMediaElementAtPoint,
+    setSelectedRichImageElement,
+    saveRichEditorSelectionRange,
+    insertPlainTextAtCursor,
+    syncAutoRichLayoutHeights,
+    syncRichEditorSelectionState,
+    updateRichImageResizeHandle,
+    updateRichLayoutBlockResizeHandle,
+    isRangeInsideRichEditor,
+    syncRichEditorTypographyControls,
+    getClosestRichColumn,
+    isRangeAtStartOfElement,
+    runtimeRichModal,
+    toggleHomePageEditMode,
+    saveHomePageState,
+    openHomePagePreview,
+    resolveDeleteLinksScope,
+    resolveDuplicatePanoramaChoice,
+    openDuplicatePanoramaListModal,
+    closeDuplicatePanoramaListModal,
+    duplicatePanoramaListEntriesRef: () => duplicatePanoramaListEntries,
+    resolveGenerateAllTilesChoice,
+    isTypingTarget,
+    moveSceneSelectionBy,
+    getBlockingModalState: () => ({
+      preview: previewModal?.classList.contains('visible'),
+      richEditor: richEditorModal?.classList.contains('visible'),
+      deleteLinksScope: deleteLinksScopeModal?.classList.contains('visible'),
+      duplicatePanorama: duplicatePanoramaModal?.classList.contains('visible'),
+      duplicatePanoramaList: duplicatePanoramaListModal?.classList.contains('visible'),
+      generateAllTiles: generateAllTilesModal?.classList.contains('visible'),
+      richSource: richSourceModal?.classList.contains('visible'),
+      floorplanMapWindowOpen,
+    }),
+    getRichEditorContext: () => richEditorContext,
+    setHomePageEditMode,
+    setInfoHotspotEditMode,
+    handleResize,
+    importProjectFile,
+    uploadFloorplanFile,
+  }),
+  [
+    { label: 'IterpanoEditorEvents', value: window.IterpanoEditorEvents }
+  ]
+);
+
+runtimeEditorUi = safeCreateRuntimeEditorModule(
+  'editor-ui',
+  () => window.IterpanoEditorUi?.createEditorUiController({
+    state,
+    windowRef: window,
+    mapPanelBody,
+    mapWindowBackdrop,
+    btnFloorplanExpand,
+    viewerCanvas,
+    layoutRoot,
+    refreshFloorplanCanvasLayout,
+    miniMap,
+    getFloorplanMapWindowOpen: () => floorplanMapWindowOpen,
+    setFloorplanMapWindowOpenState: (value) => {
+      floorplanMapWindowOpen = Boolean(value);
+    },
+    floorplanZoomByGroup,
+    btnToggleLinksPanel,
+    linksPanelBody,
+    getPlacementMode: () => placementMode,
+    togglePlacementMode,
+    getInfoHotspotCreateMode: () => infoHotspotCreateMode,
+    setInfoHotspotCreateModeState: (value) => {
+      infoHotspotCreateMode = Boolean(value);
+    },
+    getInfoHotspotEditMode: () => infoHotspotEditMode,
+    setInfoHotspotEditModeState: (value) => {
+      infoHotspotEditMode = Boolean(value);
+    },
+    richSourceModal,
+    getRichSourceContext: () => richSourceContext,
+    saveRichSourceModalContent,
+    hideHotspotHoverCard,
+    closeHotspotPreview,
+    setHomePageEditModeState: (value) => {
+      homePageEditMode = Boolean(value);
+    },
+    richEditorModal,
+    getRichEditorContext: () => richEditorContext,
+    saveRichEditorModalContent,
+    updateInfoHotspotModeButtons,
+    renderContentBlocks,
+    updateStatus,
+    openRichEditorModal,
+    getProjectHomePage,
+  }),
+  [
+    { label: 'IterpanoEditorUi', value: window.IterpanoEditorUi }
+  ]
+);
 
 runtimeSceneSelection = safeCreateRuntimeEditorModule(
   'scene-selection',
@@ -4072,69 +4306,11 @@ function setFloorplanEditMode(nextMode) {
 }
 
 function updateMapWindowBounds() {
-  if (!floorplanMapWindowOpen || !mapPanelBody) return;
-  const sceneRect = viewerCanvas?.getBoundingClientRect();
-  const layoutRect = layoutRoot?.getBoundingClientRect();
-  const baseRect = sceneRect || layoutRect;
-  if (!baseRect) return;
-
-  // Maximise map: full scene height, only 1/3 of scene width.
-  const mapWidth = Math.max(160, Math.round(baseRect.width / 3));
-  const leftPx = Math.max(8, Math.round(baseRect.right - mapWidth));
-  const topPx = Math.max(8, Math.round(baseRect.top));
-  const rightPx = Math.max(8, Math.round(window.innerWidth - (leftPx + mapWidth)));
-  const bottomPx = Math.max(8, Math.round(window.innerHeight - baseRect.bottom));
-
-  const setInsetVars = (el) => {
-    if (!el) return;
-    el.style.setProperty('--map-window-top', `${topPx}px`);
-    el.style.setProperty('--map-window-right', `${rightPx}px`);
-    el.style.setProperty('--map-window-bottom', `${bottomPx}px`);
-    el.style.setProperty('--map-window-left', `${leftPx}px`);
-  };
-  setInsetVars(mapPanelBody);
-  setInsetVars(mapWindowBackdrop);
+  runtimeEditorUi?.updateMapWindowBounds();
 }
 
 function setFloorplanMapWindowOpen(nextMode) {
-  floorplanMapWindowOpen = Boolean(nextMode);
-  if (!floorplanMapWindowOpen && state.selectedGroupId) {
-    floorplanZoomByGroup.set(state.selectedGroupId, 1);
-  }
-  if (mapPanelBody) {
-    mapPanelBody.classList.toggle('map-panel-window', floorplanMapWindowOpen);
-    if (!floorplanMapWindowOpen) {
-      mapPanelBody.style.removeProperty('--map-window-top');
-      mapPanelBody.style.removeProperty('--map-window-right');
-      mapPanelBody.style.removeProperty('--map-window-bottom');
-      mapPanelBody.style.removeProperty('--map-window-left');
-    }
-  }
-  if (mapWindowBackdrop) {
-    mapWindowBackdrop.classList.toggle('visible', floorplanMapWindowOpen);
-    mapWindowBackdrop.setAttribute('aria-hidden', floorplanMapWindowOpen ? 'false' : 'true');
-    if (!floorplanMapWindowOpen) {
-      mapWindowBackdrop.style.removeProperty('--map-window-top');
-      mapWindowBackdrop.style.removeProperty('--map-window-right');
-      mapWindowBackdrop.style.removeProperty('--map-window-bottom');
-      mapWindowBackdrop.style.removeProperty('--map-window-left');
-    }
-  }
-  if (btnFloorplanExpand) {
-    btnFloorplanExpand.classList.toggle('active', floorplanMapWindowOpen);
-    btnFloorplanExpand.textContent = floorplanMapWindowOpen ? 'Minimise' : 'Maximise';
-    btnFloorplanExpand.setAttribute('aria-pressed', floorplanMapWindowOpen ? 'true' : 'false');
-  }
-  if (floorplanMapWindowOpen) {
-    updateMapWindowBounds();
-  }
-  requestAnimationFrame(() => {
-    refreshFloorplanCanvasLayout();
-    if (!floorplanMapWindowOpen && miniMap) {
-      miniMap.scrollLeft = 0;
-      miniMap.scrollTop = 0;
-    }
-  });
+  runtimeEditorUi?.setFloorplanMapWindowOpen(nextMode);
 }
 
 function selectScene(sceneId) {
@@ -5187,21 +5363,15 @@ function startTourFromHomePagePreview() {
 }
 
 function setSectionCollapsed(buttonElement, bodyElement, next) {
-  if (!buttonElement || !bodyElement) return;
-  const collapsed = Boolean(next);
-  bodyElement.classList.toggle('collapsed', collapsed);
-  buttonElement.textContent = collapsed ? 'Show' : 'Hide';
-  buttonElement.setAttribute('aria-expanded', String(!collapsed));
+  runtimeEditorUi?.setSectionCollapsed(buttonElement, bodyElement, next);
 }
 
 function toggleSection(buttonElement, bodyElement) {
-  if (!buttonElement || !bodyElement) return;
-  const isCollapsed = bodyElement.classList.contains('collapsed');
-  setSectionCollapsed(buttonElement, bodyElement, !isCollapsed);
+  runtimeEditorUi?.toggleSection(buttonElement, bodyElement);
 }
 
 function setLinksPanelCollapsed(next) {
-  setSectionCollapsed(btnToggleLinksPanel, linksPanelBody, next);
+  runtimeEditorUi?.setLinksPanelCollapsed(next);
 }
 
 function openDeleteLinksScopeModal() {
@@ -5385,42 +5555,11 @@ function toggleInfoHotspotEditMode() {
 }
 
 function setHomePageEditMode(nextMode, { silent = false } = {}) {
-  const next = Boolean(nextMode);
-  if (next) {
-    if (placementMode) {
-      togglePlacementMode();
-    }
-    if (infoHotspotCreateMode) {
-      infoHotspotCreateMode = false;
-    }
-    if (infoHotspotEditMode) {
-      infoHotspotEditMode = false;
-    }
-    if (richSourceModal?.classList.contains('visible') && richSourceContext?.type !== 'home-page') {
-      saveRichSourceModalContent({ closeAfterSave: true, refreshPanel: false });
-    }
-    hideHotspotHoverCard();
-    closeHotspotPreview();
-    homePageEditMode = true;
-    openRichEditorModal(getProjectHomePage(), { type: 'home-page' });
-  } else {
-    homePageEditMode = false;
-    if (richEditorModal?.classList.contains('visible') && richEditorContext?.type === 'home-page') {
-      saveRichEditorModalContent({ closeAfterSave: true, refreshPanel: true });
-    }
-    if (richSourceModal?.classList.contains('visible') && richSourceContext?.type === 'home-page') {
-      saveRichSourceModalContent({ closeAfterSave: true, refreshPanel: true });
-    }
-  }
-  updateInfoHotspotModeButtons();
-  renderContentBlocks();
-  if (!silent) {
-    updateStatus(next ? 'Home Page edit mode ON.' : 'Home Page edit mode OFF.');
-  }
+  runtimeEditorUi?.setHomePageEditMode(nextMode, { silent });
 }
 
 function toggleHomePageEditMode() {
-  setHomePageEditMode(!homePageEditMode);
+  runtimeEditorUi?.toggleHomePageEditMode(homePageEditMode);
 }
 
 function saveHomePageState() {
@@ -8416,412 +8555,27 @@ linkSelect.addEventListener('change', (event) => {
   scheduleMarkerRender();
 });
 
-btnSave.addEventListener('click', () => saveDraft(state.project));
-btnExport.addEventListener('click', exportProject);
-btnExportPackage?.addEventListener('click', () => {
-  exportProjectPackageZip().catch((error) => {
-    console.error(error);
-    updateStatus('Project package ZIP export failed.');
-  });
-});
-btnExportStatic.addEventListener('click', exportStaticPackage);
-btnImport.addEventListener('click', () => fileImport.click());
-btnUploadFloorplan.addEventListener('click', () => fileFloorplan.click());
-btnDeleteFloorplan.addEventListener('click', deleteFloorplan);
-btnFloorplanPlaceScene?.addEventListener('click', () => {
-  if (btnFloorplanPlaceScene.disabled) return;
-  setFloorplanPlaceMode(!floorplanPlaceMode);
-});
-btnFloorplanEdit?.addEventListener('click', () => {
-  if (btnFloorplanEdit.disabled) return;
-  setFloorplanEditMode(!floorplanEditMode);
-});
-btnFloorplanSelectAll?.addEventListener('click', () => {
-  if (btnFloorplanSelectAll.disabled) return;
-  setFloorplanSelectAllMode(!floorplanSelectAllMode);
-});
-btnFloorplanDeleteNode?.addEventListener('click', () => {
-  if (btnFloorplanDeleteNode.disabled) return;
-  deleteSelectedFloorplanNode();
-});
-btnFloorplanToggleLabels?.addEventListener('click', () => {
-  if (btnFloorplanToggleLabels.disabled) return;
-  setFloorplanShowLabels(!floorplanShowLabels);
-});
-btnFloorplanToggleAliases?.addEventListener('click', () => {
-  if (btnFloorplanToggleAliases.disabled) return;
-  setFloorplanShowAliases(!floorplanShowAliases);
-});
-btnFloorplanExpand?.addEventListener('click', () => {
-  setFloorplanMapWindowOpen(!floorplanMapWindowOpen);
-});
-floorplanColorSelect?.addEventListener('change', (event) => {
-  const colorKey = event.target.value || 'yellow';
-  setSelectedFloorplanColor(colorKey);
-});
-btnFloorplanZoomReset?.addEventListener('click', () => {
-  setFloorplanZoom(1);
-});
-btnFloorplanZoomOut?.addEventListener('click', () => {
-  setFloorplanZoom(getFloorplanZoom() * 0.9);
-});
-btnFloorplanZoomIn?.addEventListener('click', () => {
-  setFloorplanZoom(getFloorplanZoom() * 1.1);
-});
-function isPointerInsideFloorplanMap(event) {
-  if (!miniMap || !getSelectedFloorplan()) return false;
-  const rect = miniMap.getBoundingClientRect();
-  if (!rect.width || !rect.height) return false;
-  return (
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
-  );
-}
-
-function normalizeLegacyWheelEvent(event) {
-  if (typeof event.deltaY === 'number') return event;
-  if (typeof event.wheelDelta === 'number') {
-    event.deltaY = -event.wheelDelta;
-    return event;
-  }
-  if (typeof event.detail === 'number') {
-    event.deltaY = event.detail * 40;
-    return event;
-  }
-  return event;
-}
-
-miniMap?.addEventListener('mouseenter', () => {
-  floorplanHoverActive = true;
-});
-miniMap?.addEventListener('mouseleave', () => {
-  floorplanHoverActive = false;
-});
-miniMap?.addEventListener('wheel', (event) => {
-  if (!isPointerInsideFloorplanMap(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
-}, { passive: false, capture: true });
-miniMap?.addEventListener('mousewheel', (event) => {
-  if (!isPointerInsideFloorplanMap(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
-}, { passive: false, capture: true });
-window.addEventListener('wheel', (event) => {
-  if (!floorplanHoverActive && !isPointerInsideFloorplanMap(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
-}, { passive: false, capture: true });
-window.addEventListener('mousewheel', (event) => {
-  if (!floorplanHoverActive && !isPointerInsideFloorplanMap(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  zoomFloorplanAt(normalizeLegacyWheelEvent(event), state.selectedGroupId);
-}, { passive: false, capture: true });
-btnUploadPanorama.addEventListener('click', () => filePanorama.click());
-btnGenerateTiles.addEventListener('click', generateTilesForSelectedScenes);
-btnGenerateAllTiles?.addEventListener('click', generateAllTiles);
-btnTilesInfo?.addEventListener('click', showTileSizingInfo);
-btnDeleteSelectedScenes?.addEventListener('click', deleteSelectedScenes);
-btnPauseTiles.addEventListener('click', pauseTiling);
-btnResumeTiles.addEventListener('click', resumeTiling);
-btnTogglePlacement.addEventListener('click', togglePlacementMode);
-btnSetMainScene.addEventListener('click', setMainSceneForSelectedGroup);
-btnSetOrientation?.addEventListener('click', () => {
-  if (!state.selectedSceneId) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-  setSceneOrientationById(state.selectedSceneId);
-});
-btnAddSceneLink.addEventListener('click', addSceneLinkBlock);
-btnDeleteSceneLink.addEventListener('click', deleteSceneLinkBlock);
-btnRemoveAllLinks.addEventListener('click', removeAllSceneLinksForCurrentScene);
-btnEditHotspot?.addEventListener('click', editSelectedInfoHotspot);
-btnSaveHotspot?.addEventListener('click', saveSelectedInfoHotspotState);
-btnToggleLinksPanel?.addEventListener('click', () => {
-  toggleSection(btnToggleLinksPanel, linksPanelBody);
-});
-btnToggleProjectPanel?.addEventListener('click', () => {
-  toggleSection(btnToggleProjectPanel, projectPanelBody);
-});
-btnToggleGroupsPanel?.addEventListener('click', () => {
-  toggleSection(btnToggleGroupsPanel, groupsPanelBody);
-});
-btnToggleScenesPanel?.addEventListener('click', () => {
-  toggleSection(btnToggleScenesPanel, scenesPanelBody);
-});
-btnSceneSortName?.addEventListener('click', () => toggleSceneSort('name'));
-btnSceneSortUpload?.addEventListener('click', () => toggleSceneSort('date'));
-btnSceneLabelMode?.addEventListener('click', toggleSceneLabelMode);
-btnToggleMapPanel?.addEventListener('click', () => {
-  if (floorplanMapWindowOpen) {
-    setFloorplanMapWindowOpen(false);
-  }
-  toggleSection(btnToggleMapPanel, mapPanelBody);
-});
-btnToggleSceneActionsPanel?.addEventListener('click', () => {
-  toggleSection(btnToggleSceneActionsPanel, sceneActionsPanelBody);
-});
-btnCancelTiles.addEventListener('click', () => {
-  if (tilerWorker && activeTilingRequestId) {
-    tilerWorker.postMessage({ type: 'cancel', requestId: activeTilingRequestId });
-  }
-});
-btnClosePreview.addEventListener('click', closeHotspotPreview);
-btnHomePagePreviewStart?.addEventListener('click', startTourFromHomePagePreview);
-previewModalContent?.addEventListener('mouseenter', () => {
-  if (quickPreviewOpenHotspotId) {
-    quickPreviewHoverModal = true;
-    cancelQuickPreviewClose();
-  }
-});
-previewModalContent?.addEventListener('mouseleave', () => {
-  if (quickPreviewOpenHotspotId) {
-    quickPreviewHoverModal = false;
-    scheduleQuickPreviewClose();
-  }
-});
-previewModalContent?.addEventListener('pointerdown', (event) => {
-  maybeStartPreviewModalDrag(event);
-});
-btnRichSourceClose?.addEventListener('click', () => saveRichSourceModalContent({ closeAfterSave: true, refreshPanel: true }));
-btnRichSourceSave?.addEventListener('click', () => saveRichSourceModalContent({ closeAfterSave: false, refreshPanel: true }));
-richSourceTextarea?.addEventListener('input', () => {
-  saveRichSourceModalContent({ closeAfterSave: false });
-});
-richEditorSurface?.addEventListener('pointerdown', (event) => {
-  if (maybeStartRichLayoutResize(event)) {
-    return;
-  }
-  maybeStartRichEditorDrag(event);
-});
-richEditorSurface?.addEventListener('pointerup', () => {
-  if (richEditorModal?.classList.contains('visible')) {
-    saveRichEditorModalContent({ closeAfterSave: false });
-  }
-});
-richEditorSurface?.addEventListener('mousemove', (event) => {
-  runtimeRichModal?.handleSurfaceHover(event);
-});
-richEditorSurface?.addEventListener('mouseleave', () => {
-  runtimeRichModal?.handleSurfaceLeave();
-});
-richEditorSurface?.addEventListener('click', (event) => {
-  const layout = event.target instanceof Element ? findClosestRichLayout(event.target) : null;
-  setSelectedRichLayoutElement(layout);
-  const mediaByTarget = event.target instanceof Element ? event.target.closest('img,video,iframe') : null;
-  const mediaByPoint = getRichMediaElementAtPoint(event.clientX, event.clientY);
-  const media = mediaByTarget || mediaByPoint;
-  if (media && richEditorSurface.contains(media)) {
-    setSelectedRichImageElement(media);
-    const selection = window.getSelection();
-    if (selection) {
-      const range = document.createRange();
-      range.selectNode(media);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-    return;
-  }
-  setSelectedRichImageElement(null);
-  saveRichEditorSelectionRange();
-});
-richEditorSurface?.addEventListener('paste', (event) => {
-  event.preventDefault();
-  const plainText = event.clipboardData?.getData('text/plain') ?? '';
-  insertPlainTextAtCursor(plainText);
-  syncAutoRichLayoutHeights();
-  syncRichEditorSelectionState();
-  saveRichEditorSelectionRange();
-  saveRichEditorModalContent({ closeAfterSave: false });
-});
-richEditorSurface?.addEventListener('input', () => {
-  syncAutoRichLayoutHeights();
-  syncRichEditorSelectionState();
-  saveRichEditorSelectionRange();
-  saveRichEditorModalContent({ closeAfterSave: false });
-});
-richEditorSurface?.addEventListener('scroll', () => {
-  updateRichImageResizeHandle();
-  updateRichLayoutBlockResizeHandle();
-});
-richEditorSurface?.addEventListener('keyup', () => {
-  syncRichEditorSelectionState();
-  saveRichEditorSelectionRange();
-});
-richEditorSurface?.addEventListener('mouseup', () => {
-  syncRichEditorSelectionState();
-  saveRichEditorSelectionRange();
-});
-richEditorSurface?.addEventListener('focus', () => {
-  saveRichEditorSelectionRange();
-});
-document.addEventListener('selectionchange', () => {
-  if (!richEditorModal?.classList.contains('visible')) return;
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    if (isRangeInsideRichEditor(range)) {
-      saveRichEditorSelectionRange();
-    }
-  }
-  syncRichEditorTypographyControls({ force: false });
-});
-richEditorSurface?.addEventListener('keydown', (event) => {
-  if (event.key !== 'Backspace') return;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return;
-  const range = selection.getRangeAt(0);
-  if (!isRangeInsideRichEditor(range)) return;
-  const column = getClosestRichColumn(range.startContainer);
-  if (!column) return;
-  if (isRangeAtStartOfElement(range, column)) {
-    event.preventDefault();
-    saveRichEditorSelectionRange();
-  }
-});
-window.addEventListener('resize', () => {
-  updateRichImageResizeHandle();
-  updateRichLayoutBlockResizeHandle();
-  runtimeRichModal?.updateResizeHandle();
-});
-btnEditHomePage?.addEventListener('click', toggleHomePageEditMode);
-btnSaveHomePage?.addEventListener('click', saveHomePageState);
-btnViewHomePage?.addEventListener('click', openHomePagePreview);
-btnDeleteLinksScene?.addEventListener('click', () => resolveDeleteLinksScope('scene'));
-btnDeleteLinksGroup?.addEventListener('click', () => resolveDeleteLinksScope('group'));
-btnDeleteLinksCancel?.addEventListener('click', () => resolveDeleteLinksScope(null));
-btnDuplicatePanoramaProceed?.addEventListener('click', () => resolveDuplicatePanoramaChoice('proceed'));
-btnDuplicatePanoramaAcceptAll?.addEventListener('click', () => resolveDuplicatePanoramaChoice('accept-all'));
-btnDuplicatePanoramaSkip?.addEventListener('click', () => resolveDuplicatePanoramaChoice('skip'));
-btnDuplicatePanoramaSkipAll?.addEventListener('click', () => resolveDuplicatePanoramaChoice('skip-all'));
-btnDuplicatePanoramaList?.addEventListener('click', () => openDuplicatePanoramaListModal(duplicatePanoramaListEntries));
-btnDuplicatePanoramaCancel?.addEventListener('click', () => resolveDuplicatePanoramaChoice('cancel'));
-btnCloseDuplicatePanoramaList?.addEventListener('click', closeDuplicatePanoramaListModal);
-btnGenerateAllTilesSkip?.addEventListener('click', () => resolveGenerateAllTilesChoice('skip'));
-btnGenerateAllTilesOverwrite?.addEventListener('click', () => resolveGenerateAllTilesChoice('overwrite'));
-btnGenerateAllTilesCancel?.addEventListener('click', () => resolveGenerateAllTilesChoice('cancel'));
-deleteLinksScopeModal?.addEventListener('click', (event) => {
-  if (event.target === deleteLinksScopeModal) {
-    resolveDeleteLinksScope(null);
-  }
-});
-duplicatePanoramaModal?.addEventListener('click', (event) => {
-  if (event.target === duplicatePanoramaModal) {
-    resolveDuplicatePanoramaChoice('cancel');
-  }
-});
-duplicatePanoramaListModal?.addEventListener('click', (event) => {
-  if (event.target === duplicatePanoramaListModal) {
-    closeDuplicatePanoramaListModal();
-  }
-});
-generateAllTilesModal?.addEventListener('click', (event) => {
-  if (event.target === generateAllTilesModal) {
-    resolveGenerateAllTilesChoice('cancel');
-  }
-});
-mapWindowBackdrop?.addEventListener('click', () => {
-  setFloorplanMapWindowOpen(false);
-});
-window.addEventListener('keydown', (event) => {
-  const blockingModalOpen =
-    previewModal?.classList.contains('visible') ||
-    richEditorModal?.classList.contains('visible') ||
-    deleteLinksScopeModal?.classList.contains('visible') ||
-    duplicatePanoramaModal?.classList.contains('visible') ||
-    duplicatePanoramaListModal?.classList.contains('visible') ||
-    generateAllTilesModal?.classList.contains('visible');
-  if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !isTypingTarget(event.target) && !blockingModalOpen) {
-    const moved = moveSceneSelectionBy(event.key === 'ArrowDown' ? 1 : -1);
-    if (moved) {
-      event.preventDefault();
-      return;
-    }
-  }
-  if (event.key === 'Escape' && duplicatePanoramaListModal?.classList.contains('visible')) {
-    closeDuplicatePanoramaListModal();
-    return;
-  }
-  if (event.key === 'Escape' && previewModal?.classList.contains('visible')) {
-    closeHotspotPreview();
-    return;
-  }
-  if (event.key === 'Escape' && duplicatePanoramaModal?.classList.contains('visible')) {
-    resolveDuplicatePanoramaChoice('cancel');
-    return;
-  }
-  if (event.key === 'Escape' && generateAllTilesModal?.classList.contains('visible')) {
-    resolveGenerateAllTilesChoice('cancel');
-    return;
-  }
-  if (event.key === 'Escape' && richEditorModal?.classList.contains('visible')) {
-    if (richEditorContext?.type === 'home-page') {
-      setHomePageEditMode(false);
-    } else {
-      setInfoHotspotEditMode(false);
-    }
-    return;
-  }
-  if (event.key === 'Escape' && richSourceModal?.classList.contains('visible')) {
-    saveRichSourceModalContent({ closeAfterSave: true, refreshPanel: true });
-    return;
-  }
-  if (event.key === 'Escape' && floorplanMapWindowOpen) {
-    setFloorplanMapWindowOpen(false);
-  }
+runtimeEditorEvents?.bindEvents();
+window.IterpanoEditorBootstrap?.initializeEditorUiState({
+  setSectionCollapsed,
+  setLinksPanelCollapsed,
+  setFloorplanMapWindowOpen,
+  btnToggleProjectPanel,
+  projectPanelBody,
+  btnToggleGroupsPanel,
+  groupsPanelBody,
+  btnToggleScenesPanel,
+  scenesPanelBody,
+  btnToggleMapPanel,
+  mapPanelBody,
+  btnToggleSceneActionsPanel,
+  sceneActionsPanelBody,
 });
 
-fileImport.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (file) {
-    importProjectFile(file);
-  }
+window.IterpanoEditorBootstrap?.bootstrapEditor({
+  loadDraft,
+  loadProject,
+  updateStatus,
+  fallbackProject,
+  sampleTourUrl,
 });
-
-fileFloorplan.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (file) {
-    uploadFloorplanFile(file);
-  }
-  fileFloorplan.value = '';
-});
-
-filePanorama.addEventListener('change', async (event) => {
-  const files = event.target.files;
-  if (files?.length) {
-    await uploadPanoramaFiles(files);
-  }
-  filePanorama.value = '';
-});
-
-window.addEventListener('resize', handleResize);
-setSectionCollapsed(btnToggleProjectPanel, projectPanelBody, false);
-setSectionCollapsed(btnToggleGroupsPanel, groupsPanelBody, false);
-setSectionCollapsed(btnToggleScenesPanel, scenesPanelBody, false);
-setSectionCollapsed(btnToggleMapPanel, mapPanelBody, true);
-setSectionCollapsed(btnToggleSceneActionsPanel, sceneActionsPanelBody, true);
-setLinksPanelCollapsed(true);
-setFloorplanMapWindowOpen(false);
-
-async function bootstrap() {
-  const draft = await loadDraft();
-  if (draft) {
-    loadProject(draft);
-    updateStatus('Loaded draft from browser storage.');
-    return;
-  }
-
-  fetch(sampleTourUrl)
-    .then((res) => res.json())
-    .then(loadProject)
-    .catch(() => loadProject(fallbackProject));
-}
-
-bootstrap();
