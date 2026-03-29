@@ -53,6 +53,7 @@ The project is operational and currently includes:
 - refactoring status: builder hotspot authoring flow extraction started; hotspot selection, actions, mode orchestration, and sidebar rendering now live in dedicated editor modules
 - refactoring status: builder floorplan editor extraction started; floorplan selection, modes, node actions, and render/palette helpers now live in dedicated editor modules
 - refactoring status: builder scene/group authoring flow extraction started; scene/group selection, actions, and sidebar rendering now live in dedicated editor modules
+- refactoring status: builder project I/O extraction started; project I/O utils, export actions, and import actions now live in dedicated editor modules
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -84,6 +85,9 @@ Completed visual editor extraction phases:
 - Phase 14: `scene/group selection + lookup` -> `editor/runtime-scene-selection.js`
 - Phase 15: `scene/group actions` -> `editor/runtime-scene-actions.js`
 - Phase 16: `scene/group sidebar rendering` -> `editor/runtime-scene-sidebar.js`
+- Phase 17: `project I/O utils` -> `editor/runtime-project-io-utils.js`
+- Phase 18: `project export actions` -> `editor/runtime-project-export.js`
+- Phase 19: `project import actions` -> `editor/runtime-project-import.js`
 
 Current result:
 - `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
@@ -94,6 +98,7 @@ Current result:
 - hotspot authoring flow now delegates selection, actions, mode toggles, and sidebar rendering to dedicated editor modules
 - floorplan authoring flow now delegates selection, modes, node actions, zoom/render, and palette handling to dedicated editor modules
 - scene/group authoring flow now delegates selection, mutations, sorting/label mode, and sidebar rendering to dedicated editor modules
+- project import/export flow now delegates file/runtime helpers, export actions, and import actions to dedicated editor modules
 - runtime editor modules are created through guarded initialization helpers to reduce bootstrap-failure impact during refactors
 
 ## Editor/Viewer Synchronization
@@ -144,6 +149,9 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `editor/runtime-scene-selection.js`: extracted scene/group selection and sorting lookup controller
 - `editor/runtime-scene-actions.js`: extracted scene/group actions and mutation controller
 - `editor/runtime-scene-sidebar.js`: extracted scene/group sidebar rendering controller
+- `editor/runtime-project-io-utils.js`: extracted project I/O utility controller
+- `editor/runtime-project-export.js`: extracted project export controller
+- `editor/runtime-project-import.js`: extracted project import controller
 - `editor/tiler.worker.js`: equirectangular -> cubemap tiling worker
 - `editor/vendor/jszip.min.js`: ZIP export support
 - `viewer/index.html`: viewer UI

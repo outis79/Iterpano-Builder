@@ -165,6 +165,9 @@ let runtimeFloorplanRender = null;
 let runtimeSceneSelection = null;
 let runtimeSceneActions = null;
 let runtimeSceneSidebar = null;
+let runtimeProjectIoUtils = null;
+let runtimeProjectExport = null;
+let runtimeProjectImport = null;
 const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
@@ -3051,6 +3054,53 @@ runtimeSceneSidebar = safeCreateRuntimeEditorModule(
   ]
 );
 
+runtimeProjectIoUtils = safeCreateRuntimeEditorModule(
+  'project-io-utils',
+  () => window.IterpanoEditorProjectIoUtils?.createProjectIoUtilsController({}),
+  [
+    { label: 'IterpanoEditorProjectIoUtils', value: window.IterpanoEditorProjectIoUtils }
+  ]
+);
+
+runtimeProjectExport = safeCreateRuntimeEditorModule(
+  'project-export',
+  () => window.IterpanoEditorProjectExport?.createProjectExportController({
+    state,
+    generatedTiles,
+    updateStatus,
+    ensureProjectMediaStore,
+    dataUrlToFile,
+    downloadBlob,
+    collectStaticExportWarnings,
+    isSceneLinkHotspot,
+    convertInfoBlocksToRichHtml,
+    sanitizeRichHtml,
+    parseMediaReference,
+    collectViewerRuntimeFiles,
+    blobToString,
+    buildStaticPackageRootIndexHtml,
+    writeFile,
+    writePathFile,
+  }),
+  [
+    { label: 'IterpanoEditorProjectExport', value: window.IterpanoEditorProjectExport }
+  ]
+);
+
+runtimeProjectImport = safeCreateRuntimeEditorModule(
+  'project-import',
+  () => window.IterpanoEditorProjectImport?.createProjectImportController({
+    generatedTiles,
+    loadProject,
+    autosave,
+    updateStatus,
+    blobToDataUrl,
+  }),
+  [
+    { label: 'IterpanoEditorProjectImport', value: window.IterpanoEditorProjectImport }
+  ]
+);
+
 function getSelectedScene() {
   return runtimeSceneSelection?.getSelectedScene() || null;
 }
@@ -3674,6 +3724,10 @@ function getSelectedFloorplanNodes() {
 
 function sceneHasGeneratedTiles(scene) {
   if (!scene) return false;
+  const generated = generatedTiles.get(scene.id);
+  if (generated && Object.keys(generated).length > 0) {
+    return true;
+  }
   const hasPaths = Boolean(scene.tilesPath && scene.previewPath);
   const levels = Array.isArray(scene.levels) ? scene.levels : [];
   const hasRenderableLevel = levels.some((level) => (
@@ -3683,7 +3737,7 @@ function sceneHasGeneratedTiles(scene) {
     Number(level.tileSize) > 0 &&
     !level?.fallbackOnly
   ));
-  return hasPaths && hasRenderableLevel;
+  return false;
 }
 
 function countSceneLinksForScene(scene) {
@@ -7077,347 +7131,63 @@ function handleResize() {
 }
 
 function exportProject() {
-  if (!state.project) return;
-  const blob = new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${state.project.project.name || 'tour-project'}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  runtimeProjectExport?.exportProject();
 }
 
 async function exportProjectPackageZip() {
-  if (!state.project) return;
-  if (!window.JSZip) {
-    updateStatus('Project package export requires JSZip.');
-    return;
-  }
-  const project = JSON.parse(JSON.stringify(state.project));
-  const zip = new JSZip();
-  zip.file('project.json', JSON.stringify(project, null, 2));
-
-  for (const [, tiles] of generatedTiles.entries()) {
-    Object.entries(tiles || {}).forEach(([path, dataUrl]) => {
-      if (!path || !dataUrl) return;
-      const fileInfo = dataUrlToFile(dataUrl, path.split('/').pop() || 'tile.jpg');
-      zip.file(path, fileInfo.blob);
-    });
-  }
-
-  updateStatus('Building project package ZIP...');
-  const content = await zip.generateAsync({ type: 'blob' }, (metadata) => {
-    updateStatus(`Project package ZIP: ${Math.round(metadata.percent)}%`);
-  });
-  downloadBlob(content, `${state.project.project.name || 'tour-project'}-project-package.zip`);
-  updateStatus('Project package ZIP export complete.');
+  return runtimeProjectExport?.exportProjectPackageZip() || Promise.resolve();
 }
 
 async function exportStaticPackage() {
-  if (!state.project) return;
-  const warnings = collectStaticExportWarnings(state.project);
-  if (warnings.missingTiles.length || warnings.insufficientLinks.length) {
-    const lines = ['Static export warnings:', ''];
-    if (warnings.missingTiles.length) {
-      lines.push('Scenes without tiles:');
-      warnings.missingTiles.forEach((scene) => {
-        lines.push(`- ${scene.name || scene.id}`);
-      });
-      lines.push('');
-    }
-    if (warnings.insufficientLinks.length) {
-      lines.push('Scenes with fewer than 2 scene links:');
-      warnings.insufficientLinks.forEach(({ scene, linkCount }) => {
-        lines.push(`- ${scene.name || scene.id} (${linkCount} link${linkCount === 1 ? '' : 's'})`);
-      });
-      lines.push('');
-    }
-    lines.push('Continue with static export?');
-    if (!window.confirm(lines.join('\n'))) {
-      updateStatus('Static export cancelled.');
-      return;
-    }
-  }
-  const project = JSON.parse(JSON.stringify(state.project));
-
-  const assetDownloads = [];
-  const usedAssetOutputPaths = new Set();
-  const registerAssetFile = (fileInfo, folder) => {
-    let filename = fileInfo.filename;
-    let outputPath = `viewer/${folder}/${filename}`;
-    let suffix = 1;
-    while (usedAssetOutputPaths.has(outputPath)) {
-      const dotIndex = filename.lastIndexOf('.');
-      const base = dotIndex === -1 ? filename : filename.slice(0, dotIndex);
-      const ext = dotIndex === -1 ? '' : filename.slice(dotIndex);
-      filename = `${base}-${suffix}${ext}`;
-      outputPath = `viewer/${folder}/${filename}`;
-      suffix += 1;
-    }
-    usedAssetOutputPaths.add(outputPath);
-    assetDownloads.push({ ...fileInfo, filename, folder, outputPath });
-    return `${folder}/${filename}`;
-  };
-
-  ensureProjectMediaStore(project).forEach((media) => {
-    if (media.dataUrl) {
-      const fileInfo = dataUrlToFile(media.dataUrl, media.name || media.id);
-      media.path = registerAssetFile(fileInfo, 'media');
-      delete media.dataUrl;
-    }
-  });
-  const mediaPathById = new Map((project.assets.media || []).map((media) => [media.id, media.path || '']));
-
-  const inlineImagePathByDataUrl = new Map();
-  (project.scenes || []).forEach((scene) => {
-    (scene.hotspots || []).forEach((hotspot, hotspotIndex) => {
-      if (isSceneLinkHotspot(hotspot)) return;
-      const sourceHtml = typeof hotspot.richContentHtml === 'string'
-        ? hotspot.richContentHtml
-        : convertInfoBlocksToRichHtml(hotspot, project);
-      const template = document.createElement('template');
-      template.innerHTML = sanitizeRichHtml(sourceHtml);
-      const srcNodes = template.content.querySelectorAll('[src]');
-
-      srcNodes.forEach((node, imageIndex) => {
-        const src = String(node.getAttribute('src') || '').trim();
-        const mediaId = parseMediaReference(src);
-        if (mediaId) {
-          const mediaPath = mediaPathById.get(mediaId) || '';
-          if (mediaPath) {
-            node.setAttribute('src', mediaPath);
-          } else {
-            node.removeAttribute('src');
-          }
-          return;
-        }
-        if (!src.startsWith('data:image/')) return;
-        if (inlineImagePathByDataUrl.has(src)) {
-          node.setAttribute('src', inlineImagePathByDataUrl.get(src));
-          return;
-        }
-        const fileInfo = dataUrlToFile(src, `${scene.id}-${hotspot.id || hotspotIndex}-img-${imageIndex + 1}`);
-        const relativePath = registerAssetFile(fileInfo, 'media');
-        inlineImagePathByDataUrl.set(src, relativePath);
-        node.setAttribute('src', relativePath);
-      });
-
-      hotspot.richContentHtml = sanitizeRichHtml(template.innerHTML);
-      hotspot.contentBlocks = (hotspot.contentBlocks || []).filter((block) => block.type === 'scene');
-    });
-  });
-
-  (project.minimap?.floorplans || []).forEach((floorplan) => {
-    if (floorplan.dataUrl) {
-      const fileInfo = dataUrlToFile(floorplan.dataUrl, floorplan.name || floorplan.id);
-      floorplan.path = registerAssetFile(fileInfo, 'floorplans');
-      delete floorplan.dataUrl;
-    }
-  });
-
-  const jsonBlob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
-
-  const tileDownloads = [];
-  if (generatedTiles.size > 0) {
-    for (const [, tiles] of generatedTiles.entries()) {
-      Object.entries(tiles).forEach(([path, dataUrl]) => {
-        const fileInfo = dataUrlToFile(dataUrl, path.split('/').pop());
-        tileDownloads.push({ ...fileInfo, path, outputPath: `viewer/${path}` });
-      });
-    }
-  }
-
-  let runtimeFiles = [];
-  try {
-    runtimeFiles = await collectViewerRuntimeFiles();
-  } catch (error) {
-    console.error(error);
-    updateStatus('Static export failed: cannot read viewer runtime files.');
-    return;
-  }
-
-  if (window.JSZip) {
-    exportZipPackage(project, jsonBlob, assetDownloads, tileDownloads, runtimeFiles);
-    return;
-  }
-
-  if (window.showDirectoryPicker) {
-    exportWithFileSystemAccess(project, jsonBlob, assetDownloads, tileDownloads, runtimeFiles);
-    return;
-  }
-
-  // Fallback: multiple downloads with flattened names.
-  downloadBlob(jsonBlob, 'shared_sample-tour.json');
-  runtimeFiles.forEach((file) => downloadBlob(file.blob, file.path.replace(/\//g, '_')));
-  assetDownloads.forEach((file) => downloadBlob(file.blob, file.outputPath.replace(/\//g, '_')));
-  tileDownloads.forEach((file) => downloadBlob(file.blob, file.outputPath.replace(/\//g, '_')));
-  updateStatus('Static export: runtime + assets downloaded (no ZIP).');
+  return runtimeProjectExport?.exportStaticPackage() || Promise.resolve();
 }
 
 function dataUrlToFile(dataUrl, fallbackName) {
-  const [meta, data] = dataUrl.split(',');
-  const mimeMatch = meta.match(/data:(.*?);base64/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const extension = mime.split('/')[1] || 'bin';
-  const filename = sanitizeFilename(fallbackName || 'asset') + '.' + extension;
-  const binary = atob(data);
-  const array = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    array[i] = binary.charCodeAt(i);
-  }
-  const blob = new Blob([array], { type: mime });
-  return { filename, blob };
+  return runtimeProjectIoUtils?.dataUrlToFile(dataUrl, fallbackName) || null;
 }
 
 function sanitizeFilename(name) {
-  return String(name || 'asset')
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^a-z0-9_-]+/gi, '-')
-    .toLowerCase()
-    .slice(0, 60);
+  return runtimeProjectIoUtils?.sanitizeFilename(name) || 'asset';
 }
 
 function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  runtimeProjectIoUtils?.downloadBlob(blob, filename);
 }
 
 async function exportZipPackage(project, jsonBlob, assets, tiles, runtimeFiles) {
-  const zip = new JSZip();
-  zip.file('index.html', buildStaticPackageRootIndexHtml());
-  zip.file('shared/sample-tour.json', await blobToString(jsonBlob));
-
-  runtimeFiles.forEach((file) => {
-    zip.file(file.path, file.blob);
-  });
-
-  assets.forEach((asset) => {
-    zip.file(asset.outputPath, asset.blob);
-  });
-
-  tiles.forEach((tile) => {
-    zip.file(tile.outputPath, tile.blob);
-  });
-
-  updateStatus('Building ZIP...');
-  const content = await zip.generateAsync({ type: 'blob' }, (metadata) => {
-    updateStatus(`ZIP: ${Math.round(metadata.percent)}%`);
-  });
-
-  downloadBlob(content, `${project.project.name || 'tour-project'}-static.zip`);
-  updateStatus('ZIP export complete.');
+  return runtimeProjectExport?.exportZipPackage(project, jsonBlob, assets, tiles, runtimeFiles) || Promise.resolve();
 }
 
 function blobToString(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsText(blob);
-  });
+  return runtimeProjectIoUtils?.blobToString(blob) || Promise.resolve('');
 }
 
 function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  return runtimeProjectIoUtils?.blobToDataUrl(blob) || Promise.resolve('');
 }
 
 async function exportWithFileSystemAccess(project, jsonBlob, assets, tiles, runtimeFiles) {
-  try {
-    const root = await window.showDirectoryPicker();
-
-    await writeFile(root, 'index.html', new Blob([buildStaticPackageRootIndexHtml()], { type: 'text/html' }));
-    const sharedDir = await root.getDirectoryHandle('shared', { create: true });
-    await writeFile(sharedDir, 'sample-tour.json', jsonBlob);
-
-    for (const file of runtimeFiles) {
-      await writePathFile(root, file.path, file.blob);
-    }
-
-    for (const asset of assets) {
-      await writePathFile(root, asset.outputPath, asset.blob);
-    }
-
-    for (const tile of tiles) {
-      await writePathFile(root, tile.outputPath, tile.blob);
-    }
-
-    updateStatus('Static export complete (folder written).');
-  } catch (error) {
-    console.error(error);
-    updateStatus('Static export failed.');
-  }
+  return runtimeProjectExport?.exportWithFileSystemAccess(project, jsonBlob, assets, tiles, runtimeFiles) || Promise.resolve();
 }
 
 function buildStaticPackageRootIndexHtml() {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url=./viewer/index.html">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Open Tour</title>
-</head>
-<body>
-  <p>Redirecting to <a href="./viewer/index.html">viewer/index.html</a>...</p>
-</body>
-</html>
-`;
+  return runtimeProjectIoUtils?.buildStaticPackageRootIndexHtml() || '';
 }
 
 async function writeFile(directoryHandle, filename, blob) {
-  const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
+  return runtimeProjectIoUtils?.writeFile(directoryHandle, filename, blob);
 }
 
 async function writePathFile(root, path, blob) {
-  const parts = path.split('/');
-  let dir = root;
-  for (let i = 0; i < parts.length - 1; i += 1) {
-    dir = await dir.getDirectoryHandle(parts[i], { create: true });
-  }
-  await writeFile(dir, parts[parts.length - 1], blob);
+  return runtimeProjectIoUtils?.writePathFile(root, path, blob);
 }
 
 async function collectViewerRuntimeFiles() {
-  const runtimePaths = [
-    'viewer/index.html',
-    'viewer/app.js',
-    'viewer/runtime-ui.js',
-    'viewer/runtime-gyro.js',
-    'viewer/runtime-floorplan.js',
-    'viewer/runtime-mobile-panels.js',
-    'viewer/runtime-hotspots.js',
-    'viewer/styles.css',
-    'viewer/vendor/marzipano.js',
-    'viewer/vendor/bowser.min.js',
-    'viewer/vendor/screenfull.min.js',
-    'viewer/vendor/reset.min.css'
-  ];
-  const files = [];
-  for (const path of runtimePaths) {
-    const blob = await fetchRuntimeFile(path);
-    files.push({ path, blob });
-  }
-  return files;
+  return runtimeProjectIoUtils?.collectViewerRuntimeFiles() || [];
 }
 
 async function fetchRuntimeFile(path) {
-  const response = await fetch(`../${path}`);
-  if (!response.ok) {
-    throw new Error(`Missing runtime file: ${path}`);
-  }
-  return await response.blob();
+  return runtimeProjectIoUtils?.fetchRuntimeFile(path) || null;
 }
 
 async function ensureFolder(root, name) {
@@ -7425,71 +7195,11 @@ async function ensureFolder(root, name) {
 }
 
 function importProjectFile(file) {
-  if (String(file?.name || '').toLowerCase().endsWith('.zip')) {
-    importProjectPackageZip(file);
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      generatedTiles.clear();
-      loadProject(data);
-      autosave();
-      updateStatus('Project imported.');
-    } catch (error) {
-      console.error(error);
-      updateStatus('Invalid JSON file.');
-    }
-  };
-  reader.readAsText(file);
+  runtimeProjectImport?.importProjectFile(file);
 }
 
 async function importProjectPackageZip(file) {
-  if (!window.JSZip) {
-    updateStatus('ZIP import requires JSZip.');
-    return;
-  }
-  try {
-    updateStatus('Reading project package ZIP...');
-    const zip = await JSZip.loadAsync(file);
-    const projectEntry = zip.file('project.json') || zip.file(/(^|\/)project\.json$/i)[0];
-    if (!projectEntry) {
-      updateStatus('Invalid project package ZIP: missing project.json.');
-      return;
-    }
-    const projectText = await projectEntry.async('string');
-    const project = JSON.parse(projectText);
-
-    const nextGeneratedTiles = new Map();
-    const tileEntries = Object.values(zip.files).filter((entry) => {
-      return !entry.dir && /^tiles\/.+/i.test(entry.name);
-    });
-
-    for (const entry of tileEntries) {
-      const blob = await entry.async('blob');
-      const dataUrl = await blobToDataUrl(blob);
-      const match = entry.name.match(/^tiles\/([^/]+)\/.+$/i);
-      if (!match) continue;
-      const sceneId = match[1];
-      if (!nextGeneratedTiles.has(sceneId)) {
-        nextGeneratedTiles.set(sceneId, {});
-      }
-      nextGeneratedTiles.get(sceneId)[entry.name] = dataUrl;
-    }
-
-    generatedTiles.clear();
-    nextGeneratedTiles.forEach((tiles, sceneId) => {
-      generatedTiles.set(sceneId, tiles);
-    });
-
-    loadProject(project);
-    autosave();
-    updateStatus(`Project package imported (${nextGeneratedTiles.size} tiled scene(s)).`);
-  } catch (error) {
-    console.error(error);
-    updateStatus('Invalid project package ZIP.');
-  }
+  return runtimeProjectImport?.importProjectPackageZip(file) || Promise.resolve();
 }
 
 function uploadFloorplanFile(file) {
