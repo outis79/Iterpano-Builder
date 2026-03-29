@@ -12,7 +12,6 @@
       <div class="brand-mark"></div>
       <div class="brand-text">
         <div class="title">Iterpano Builder</div>
-        <div class="subtitle">Editor</div>
       </div>
     </div>
     <div class="top-actions">
@@ -52,14 +51,10 @@
             <select id="group-select"></select>
           </div>
           <div class="inline-actions">
-            <button class="btn" id="btn-add-group">Create</button>
+            <button class="btn" id="btn-add-group">Add</button>
             <button class="btn ghost" id="btn-rename-group">Rename</button>
             <button class="btn ghost" id="btn-set-main-group">Set Main</button>
-            <button class="btn ghost" id="btn-delete-group">Delete Group</button>
-          </div>
-          <div class="inline-actions">
-            <button class="btn" id="btn-upload-panorama">Upload Img</button>
-            <button class="btn ghost" id="btn-delete-all-scenes">Delete All Img</button>
+            <button class="btn ghost" id="btn-delete-group">Delete</button>
           </div>
         </div>
       </section>
@@ -101,9 +96,6 @@
         <div class="hotspot-hover-card" id="hotspot-hover-card" aria-hidden="true"></div>
         <div class="viewer-placeholder" id="viewer-placeholder">Upload a 360 image and generate tiles.</div>
       </div>
-      <div class="viewer-footer">
-        <div class="hint">Touch drag works as fallback. Gyro is manual toggle.</div>
-      </div>
     </section>
 
     <aside class="panel right">
@@ -114,15 +106,13 @@
         </div>
         <div class="section-body" id="scene-actions-panel-body">
           <div class="inline-actions">
-            <button class="btn ghost" id="btn-set-main-scene">Set Main Scene</button>
-            <button class="btn ghost" id="btn-set-orientation">Set Orientation</button>
+            <button class="btn" id="btn-upload-panorama">Add</button>
+            <button class="btn ghost" id="btn-delete-selected-scenes">Delete Selected</button>
+            <button class="btn ghost" id="btn-delete-all-scenes">Delete All</button>
           </div>
           <div class="inline-actions">
-            <button class="btn ghost" id="btn-delete-selected-scenes">Delete Scene(s)</button>
-          </div>
-          <div class="field">
-            <label>Comment (optional)</label>
-            <textarea id="scene-comment" rows="2"></textarea>
+            <button class="btn ghost" id="btn-set-main-scene">Set Main</button>
+            <button class="btn ghost" id="btn-set-orientation">Set Orientation</button>
           </div>
           <div class="inline-actions">
             <button class="btn ghost" id="btn-tiles-info">Info</button>
@@ -383,6 +373,9 @@
   <script src="runtime-floorplan-modes.js"></script>
   <script src="runtime-floorplan-actions.js"></script>
   <script src="runtime-floorplan-render.js"></script>
+  <script src="runtime-scene-selection.js"></script>
+  <script src="runtime-scene-actions.js"></script>
+  <script src="runtime-scene-sidebar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

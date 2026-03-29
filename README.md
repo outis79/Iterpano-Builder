@@ -52,6 +52,7 @@ The project is operational and currently includes:
 - refactoring status: builder visual editor extraction started; modal frame, layout resize, selection/media handles, and typography controls now live in dedicated editor modules, followed by a stabilization pass on columns, media insertion, row actions, custom color pickers, and tighter info-box sizing
 - refactoring status: builder hotspot authoring flow extraction started; hotspot selection, actions, mode orchestration, and sidebar rendering now live in dedicated editor modules
 - refactoring status: builder floorplan editor extraction started; floorplan selection, modes, node actions, and render/palette helpers now live in dedicated editor modules
+- refactoring status: builder scene/group authoring flow extraction started; scene/group selection, actions, and sidebar rendering now live in dedicated editor modules
 
 ## Viewer Refactoring Status
 Completed viewer runtime extraction phases:
@@ -80,6 +81,9 @@ Completed visual editor extraction phases:
 - Phase 11: `floorplan mode orchestration` -> `editor/runtime-floorplan-modes.js`
 - Phase 12: `floorplan node actions` -> `editor/runtime-floorplan-actions.js`
 - Phase 13: `floorplan render + palette helpers` -> `editor/runtime-floorplan-render.js`
+- Phase 14: `scene/group selection + lookup` -> `editor/runtime-scene-selection.js`
+- Phase 15: `scene/group actions` -> `editor/runtime-scene-actions.js`
+- Phase 16: `scene/group sidebar rendering` -> `editor/runtime-scene-sidebar.js`
 
 Current result:
 - `editor/app.js` still coordinates the editor, but the rich visual editor now delegates core UI subsystems to dedicated modules
@@ -89,6 +93,7 @@ Current result:
 - rich preview/info boxes now trim trailing empty rows and size more tightly to real content
 - hotspot authoring flow now delegates selection, actions, mode toggles, and sidebar rendering to dedicated editor modules
 - floorplan authoring flow now delegates selection, modes, node actions, zoom/render, and palette handling to dedicated editor modules
+- scene/group authoring flow now delegates selection, mutations, sorting/label mode, and sidebar rendering to dedicated editor modules
 - runtime editor modules are created through guarded initialization helpers to reduce bootstrap-failure impact during refactors
 
 ## Editor/Viewer Synchronization
@@ -136,6 +141,9 @@ Practical implication: if a tour behaves correctly in editor and you export a st
 - `editor/runtime-floorplan-modes.js`: extracted floorplan mode orchestration controller
 - `editor/runtime-floorplan-actions.js`: extracted floorplan node actions controller
 - `editor/runtime-floorplan-render.js`: extracted floorplan render/palette controller
+- `editor/runtime-scene-selection.js`: extracted scene/group selection and sorting lookup controller
+- `editor/runtime-scene-actions.js`: extracted scene/group actions and mutation controller
+- `editor/runtime-scene-sidebar.js`: extracted scene/group sidebar rendering controller
 - `editor/tiler.worker.js`: equirectangular -> cubemap tiling worker
 - `editor/vendor/jszip.min.js`: ZIP export support
 - `viewer/index.html`: viewer UI

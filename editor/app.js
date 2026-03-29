@@ -162,6 +162,9 @@ let runtimeFloorplanSelection = null;
 let runtimeFloorplanModes = null;
 let runtimeFloorplanActions = null;
 let runtimeFloorplanRender = null;
+let runtimeSceneSelection = null;
+let runtimeSceneActions = null;
+let runtimeSceneSidebar = null;
 const runtimeEditorModuleFailures = [];
 const richSourceModal = document.getElementById('rich-source-modal');
 const richSourceTextarea = document.getElementById('rich-source-textarea');
@@ -187,7 +190,6 @@ const generateAllTilesMessage = document.getElementById('generate-all-tiles-mess
 const btnGenerateAllTilesSkip = document.getElementById('btn-generate-all-tiles-skip');
 const btnGenerateAllTilesOverwrite = document.getElementById('btn-generate-all-tiles-overwrite');
 const btnGenerateAllTilesCancel = document.getElementById('btn-generate-all-tiles-cancel');
-const sceneCommentInput = document.getElementById('scene-comment');
 
 let dragState = null;
 const generatedTiles = new Map();
@@ -2927,7 +2929,6 @@ function renderAll() {
   updateInfoHotspotModeButtons();
   renderSceneGroupOptions();
   renderSceneList();
-  renderSceneCommentField();
   renderHotspotList();
   renderLinkEditor();
   renderContentBlocks();
@@ -2970,115 +2971,132 @@ function syncSceneFovInput() {
   projectFovInput.value = String(Number(getSelectedSceneFov().toFixed(2)));
 }
 
+runtimeSceneSelection = safeCreateRuntimeEditorModule(
+  'scene-selection',
+  () => window.IterpanoEditorSceneSelection?.createSceneSelectionController({
+    getProjectData: () => state.project,
+    getSelectedSceneId: () => state.selectedSceneId,
+    getSelectedGroupId: () => state.selectedGroupId,
+    getSceneLabelMode: () => state.sceneLabelMode,
+    getSceneSortKey: () => state.sceneSortKey,
+    getSceneSortDirection: () => state.sceneSortDirection,
+  }),
+  [
+    { label: 'IterpanoEditorSceneSelection', value: window.IterpanoEditorSceneSelection }
+  ]
+);
+
+runtimeSceneActions = safeCreateRuntimeEditorModule(
+  'scene-actions',
+  () => window.IterpanoEditorSceneActions?.createSceneActionsController({
+    state,
+    generatedTiles,
+    editorScenes,
+    windowRef: window,
+    getSelectedScene,
+    getSelectedGroup,
+    getGroupById,
+    getScenesForSelectedGroup,
+    getPreferredSceneForGroup,
+    getSelectedSceneFov,
+    getFloorplanForGroup,
+    getPendingSceneLinkDraft: () => pendingSceneLinkDraft,
+    clearPendingSceneLinkDraft,
+    renderAll,
+    renderSceneList,
+    renderSceneGroupOptions,
+    updateSceneTitle,
+    renderHotspotList,
+    renderLinkEditor,
+    renderContentBlocks,
+    renderFloorplans,
+    switchEditorScene,
+    autosave,
+    updateStatus,
+  }),
+  [
+    { label: 'IterpanoEditorSceneActions', value: window.IterpanoEditorSceneActions }
+  ]
+);
+
+runtimeSceneSidebar = safeCreateRuntimeEditorModule(
+  'scene-sidebar',
+  () => window.IterpanoEditorSceneSidebar?.createSceneSidebarController({
+    state,
+    sceneGroupSelect,
+    sceneList,
+    btnSetMainGroup,
+    btnSetMainScene,
+    btnSetOrientation,
+    btnDeleteSelectedScenes,
+    btnSceneSortName,
+    btnSceneSortUpload,
+    btnSceneLabelMode,
+    getSelectedScene,
+    getSelectedGroup,
+    getScenesForSelectedGroup,
+    getSceneListLabel,
+    sceneHasGeneratedTiles,
+    renderFloorplans,
+    selectScene,
+    deleteSceneById,
+    startInlineSceneRename,
+    handleSceneMultiSelectClick,
+    updateStatus,
+    getRenamingSceneId: () => renamingSceneId,
+    singleClickDelayMs: SCENE_ITEM_SINGLE_CLICK_DELAY_MS,
+  }),
+  [
+    { label: 'IterpanoEditorSceneSidebar', value: window.IterpanoEditorSceneSidebar }
+  ]
+);
+
 function getSelectedScene() {
-  return state.project?.scenes.find((scene) => scene.id === state.selectedSceneId) || null;
+  return runtimeSceneSelection?.getSelectedScene() || null;
 }
 
 function getSelectedGroup() {
-  return state.project?.groups?.find((group) => group.id === state.selectedGroupId) || null;
+  return runtimeSceneSelection?.getSelectedGroup() || null;
 }
 
 function getGroupById(groupId) {
-  if (!groupId) return null;
-  return state.project?.groups?.find((group) => group.id === groupId) || null;
+  return runtimeSceneSelection?.getGroupById(groupId) || null;
 }
 
 function getSceneListLabel(scene) {
-  if (!scene) return '';
-  if (state.sceneLabelMode === 'alias') {
-    return String(scene.alias || '').trim();
-  }
-  return String(scene.name || '').trim();
+  return runtimeSceneSelection?.getSceneListLabel(scene) || '';
 }
 
 function compareScenesByName(a, b) {
-  const nameA = getSceneListLabel(a);
-  const nameB = getSceneListLabel(b);
-  const cmp = nameA.localeCompare(nameB, undefined, { sensitivity: 'base', numeric: true });
-  if (cmp !== 0) return cmp;
-  return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { sensitivity: 'base', numeric: true });
+  return runtimeSceneSelection?.compareScenesByName(a, b) || 0;
 }
 
 function compareScenesByUploadId(a, b) {
-  return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { sensitivity: 'base', numeric: true });
+  return runtimeSceneSelection?.compareScenesByUploadId(a, b) || 0;
 }
 
 function sortScenesForList(scenes) {
-  const list = [...(scenes || [])];
-  const key = state.sceneSortKey === 'date' ? 'date' : 'name';
-  const direction = state.sceneSortDirection === 'desc' ? -1 : 1;
-  list.sort((a, b) => {
-    const cmp = key === 'date' ? compareScenesByUploadId(a, b) : compareScenesByName(a, b);
-    return cmp * direction;
-  });
-  return list;
+  return runtimeSceneSelection?.sortScenesForList(scenes) || [];
 }
 
 function getScenesForSelectedGroup() {
-  const groupId = state.selectedGroupId;
-  const scenes = (state.project?.scenes || []).filter((scene) => scene.groupId === groupId);
-  return sortScenesForList(scenes);
+  return runtimeSceneSelection?.getScenesForSelectedGroup() || [];
 }
 
 function getPreferredSceneForGroup(groupId) {
-  const scenes = (state.project?.scenes || []).filter((scene) => scene.groupId === groupId);
-  if (!scenes.length) return null;
-  const group = getGroupById(groupId);
-  const preferred = scenes.find((scene) => scene.id === group?.mainSceneId);
-  return preferred || scenes[0];
+  return runtimeSceneSelection?.getPreferredSceneForGroup(groupId) || null;
 }
 
 function updateSceneSortButtons() {
-  if (btnSceneSortName) {
-    const activeName = state.sceneSortKey === 'name';
-    btnSceneSortName.classList.toggle('active', activeName);
-    const arrow = state.sceneSortDirection === 'asc' ? '↓' : '↑';
-    btnSceneSortName.textContent = activeName
-      ? `A/Z ${arrow}`
-      : 'A/Z';
-    btnSceneSortName.title = activeName
-      ? `${state.sceneLabelMode === 'alias' ? 'Alias' : 'Name'} order (${state.sceneSortDirection})`
-      : `Sort by scene ${state.sceneLabelMode === 'alias' ? 'alias' : 'name'}`;
-  }
-  if (btnSceneSortUpload) {
-    const activeDate = state.sceneSortKey === 'date';
-    btnSceneSortUpload.classList.toggle('active', activeDate);
-    const arrow = state.sceneSortDirection === 'asc' ? '↓' : '↑';
-    btnSceneSortUpload.textContent = activeDate
-      ? `DATE ${arrow}`
-      : 'DATE';
-    btnSceneSortUpload.title = activeDate
-      ? `Date order (${state.sceneSortDirection})`
-      : 'Sort by scene creation date';
-  }
-  if (btnSceneLabelMode) {
-    const aliasMode = state.sceneLabelMode === 'alias';
-    btnSceneLabelMode.classList.toggle('active', aliasMode);
-    btnSceneLabelMode.textContent = aliasMode ? 'Alias ON' : 'Alias OFF';
-    btnSceneLabelMode.title = aliasMode
-      ? 'Scenes list shows alias values'
-      : 'Scenes list shows scene names';
-  }
+  runtimeSceneSidebar?.updateSceneSortButtons();
 }
 
 function toggleSceneSort(sortKey) {
-  if (state.sceneSortKey === sortKey) {
-    state.sceneSortDirection = state.sceneSortDirection === 'asc' ? 'desc' : 'asc';
-  } else {
-    state.sceneSortKey = sortKey;
-    state.sceneSortDirection = 'asc';
-  }
-  renderSceneList();
-  const modeLabel = state.sceneSortKey === 'date'
-    ? 'date'
-    : (state.sceneLabelMode === 'alias' ? 'alias' : 'name');
-  updateStatus(`Scenes sorted by ${modeLabel} (${state.sceneSortDirection}).`);
+  runtimeSceneActions?.toggleSceneSort(sortKey);
 }
 
 function toggleSceneLabelMode() {
-  state.sceneLabelMode = state.sceneLabelMode === 'alias' ? 'name' : 'alias';
-  renderSceneList();
-  updateStatus(`Scene list mode: ${state.sceneLabelMode === 'alias' ? 'Alias' : 'Name'}.`);
+  runtimeSceneActions?.toggleSceneLabelMode();
 }
 
 function isTypingTarget(target) {
@@ -3088,17 +3106,11 @@ function isTypingTarget(target) {
 }
 
 function moveSceneSelectionBy(delta) {
+  const handled = runtimeSceneActions?.moveSceneSelectionBy(delta) || false;
+  if (!handled) return false;
   const scenes = getScenesForSelectedGroup();
-  if (!scenes.length) return false;
-
-  let index = scenes.findIndex((scene) => scene.id === state.selectedSceneId);
-  if (index < 0) index = 0;
-  const nextIndex = Math.min(scenes.length - 1, Math.max(0, index + delta));
-  if (nextIndex === index) return true;
-
-  const nextScene = scenes[nextIndex];
+  const nextScene = scenes.find((scene) => scene.id === state.selectedSceneId);
   if (!nextScene) return false;
-  selectScene(nextScene.id);
   const activeButton = sceneList?.querySelector(`.scene-item-main[data-scene-id="${nextScene.id}"]`);
   activeButton?.scrollIntoView({ block: 'nearest' });
   return true;
@@ -3697,21 +3709,6 @@ function collectStaticExportWarnings(project) {
   return { missingTiles, insufficientLinks };
 }
 
-function renderSceneCommentField() {
-  if (!sceneCommentInput) return;
-  const scene = getSelectedScene();
-  if (!scene) {
-    sceneCommentInput.value = '';
-    sceneCommentInput.disabled = true;
-    return;
-  }
-  if (typeof scene.comment !== 'string') {
-    scene.comment = '';
-  }
-  sceneCommentInput.disabled = false;
-  sceneCommentInput.value = scene.comment;
-}
-
 function updateFloorplanDeleteNodeUi() {
   if (!btnFloorplanDeleteNode) return;
   const hasFloorplan = Boolean(getSelectedFloorplan());
@@ -4087,26 +4084,7 @@ function setFloorplanMapWindowOpen(nextMode) {
 }
 
 function selectScene(sceneId) {
-  const scene = state.project?.scenes?.find((item) => item.id === sceneId);
-  if (!scene) return;
-  clearPendingSceneLinkDraft(false);
-
-  state.selectedGroupId = scene.groupId || state.selectedGroupId;
-  state.selectedSceneId = scene.id;
-  state.selectedHotspotId = scene.hotspots[0]?.id || null;
-  state.selectedFloorplanId = getFloorplanForGroup(state.selectedGroupId)?.id || null;
-  state.multiSelectedSceneIds = [scene.id];
-  state.sceneSelectionAnchorId = scene.id;
-
-  renderSceneGroupOptions();
-  renderSceneList();
-  updateSceneTitle();
-  renderHotspotList();
-  renderLinkEditor();
-  renderContentBlocks();
-  renderSceneCommentField();
-  renderFloorplans();
-  switchEditorScene();
+  runtimeSceneActions?.selectScene(sceneId);
 }
 
 function handleSceneMultiSelectClick(sceneId, event, scenesInGroup) {
@@ -4148,128 +4126,11 @@ function handleSceneMultiSelectClick(sceneId, event, scenesInGroup) {
 }
 
 function renderSceneGroupOptions() {
-  sceneGroupSelect.innerHTML = '';
-  const groups = state.project?.groups || [];
-  groups.forEach((group) => {
-    const option = document.createElement('option');
-    option.value = group.id;
-    option.textContent = group.id === state.project?.activeGroupId ? `${group.name} (Main)` : group.name;
-    sceneGroupSelect.appendChild(option);
-  });
-
-  sceneGroupSelect.disabled = groups.length === 0;
-  if (btnSetMainGroup) {
-    btnSetMainGroup.disabled = groups.length === 0 || !state.selectedGroupId;
-  }
-  const scene = getSelectedScene();
-  if (scene?.groupId) {
-    sceneGroupSelect.value = scene.groupId;
-  } else if (state.selectedGroupId) {
-    sceneGroupSelect.value = state.selectedGroupId;
-  }
+  runtimeSceneSidebar?.renderSceneGroupOptions();
 }
 
 function renderSceneList() {
-  sceneList.innerHTML = '';
-  updateSceneSortButtons();
-  const scenes = getScenesForSelectedGroup();
-  const group = getSelectedGroup();
-  const sceneIds = new Set(scenes.map((scene) => scene.id));
-  state.multiSelectedSceneIds = (state.multiSelectedSceneIds || []).filter((id) => sceneIds.has(id));
-  if (!state.multiSelectedSceneIds.length && state.selectedSceneId && sceneIds.has(state.selectedSceneId)) {
-    state.multiSelectedSceneIds = [state.selectedSceneId];
-  }
-  const multiSelected = new Set(state.multiSelectedSceneIds);
-  if (btnSetMainScene) {
-    btnSetMainScene.disabled = scenes.length === 0;
-  }
-  if (btnSetOrientation) {
-    btnSetOrientation.disabled = !Boolean(getSelectedScene());
-  }
-  if (btnDeleteSelectedScenes) {
-    btnDeleteSelectedScenes.disabled = !Boolean(getSelectedScene());
-  }
-  scenes.forEach((scene) => {
-    const row = document.createElement('div');
-    row.className = 'scene-item-row';
-
-    const main = document.createElement('button');
-    main.className = `list-item scene-item-main${scene.id === state.selectedSceneId ? ' active' : ''}${multiSelected.has(scene.id) ? ' multi-selected' : ''}`;
-    const isMainScene = group?.mainSceneId === scene.id;
-    const sceneLabel = getSceneListLabel(scene);
-    const mainLabel = state.sceneLabelMode === 'name' && isMainScene
-      ? `${sceneLabel || scene.name || ''} (Main)`
-      : sceneLabel;
-    main.textContent = mainLabel || '\u00A0';
-    main.dataset.sceneId = scene.id;
-    let clickTimer = null;
-    main.addEventListener('click', (event) => {
-      if (renamingSceneId === scene.id) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      if (event.ctrlKey || event.metaKey || event.shiftKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (clickTimer) {
-          clearTimeout(clickTimer);
-          clickTimer = null;
-        }
-        handleSceneMultiSelectClick(scene.id, event, scenes);
-        return;
-      }
-      // Normal click exits multi-select and keeps only the clicked scene.
-      state.multiSelectedSceneIds = [scene.id];
-      state.sceneSelectionAnchorId = scene.id;
-      if (clickTimer) {
-        clearTimeout(clickTimer);
-      }
-      clickTimer = setTimeout(() => {
-        clickTimer = null;
-        selectScene(scene.id);
-      }, SCENE_ITEM_SINGLE_CLICK_DELAY_MS);
-    });
-    main.addEventListener('dblclick', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (clickTimer) {
-        clearTimeout(clickTimer);
-        clickTimer = null;
-      }
-      state.multiSelectedSceneIds = [scene.id];
-      state.sceneSelectionAnchorId = scene.id;
-      if (state.selectedSceneId !== scene.id) {
-        selectScene(scene.id);
-      }
-      startInlineSceneRename(scene, main);
-    });
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'scene-action';
-    deleteBtn.type = 'button';
-    deleteBtn.title = 'Delete scene';
-    deleteBtn.textContent = '🗑';
-    deleteBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteSceneById(scene.id);
-    });
-
-    const tilesIndicator = document.createElement('button');
-    const tilesReady = sceneHasGeneratedTiles(scene);
-    tilesIndicator.className = `scene-action scene-tile-indicator${tilesReady ? ' tile-ready' : ''}`;
-    tilesIndicator.type = 'button';
-    tilesIndicator.disabled = true;
-    tilesIndicator.title = tilesReady ? 'Tiles created' : 'Tiles not created';
-    tilesIndicator.setAttribute('aria-label', tilesReady ? 'Tiles created' : 'Tiles not created');
-    tilesIndicator.textContent = 'T';
-
-    row.appendChild(main);
-    row.appendChild(tilesIndicator);
-    row.appendChild(deleteBtn);
-    sceneList.appendChild(row);
-  });
+  runtimeSceneSidebar?.renderSceneList();
 }
 
 function renameScene(scene, newValue, mode = 'name') {
@@ -6592,36 +6453,11 @@ function renderContentBlocks() {
 }
 
 function addScene() {
-  const group = getSelectedGroup();
-  if (!group) {
-    updateStatus('Create a group first.');
-    return;
-  }
-  const name = prompt('Scene name');
-  if (!name) return;
-  const scene = createSceneRecord(name, group.id);
-  state.project.scenes.push(scene);
-  ensureMainSceneForGroup(group.id, scene.id);
-  state.selectedSceneId = scene.id;
-  state.selectedHotspotId = null;
-  renderAll();
-  autosave();
+  runtimeSceneActions?.addScene();
 }
 
 function createSceneRecord(name = 'New Scene', groupId = null) {
-  const id = `scene-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-  return {
-    id,
-    groupId: groupId || state.selectedGroupId || state.project?.groups?.[0]?.id || null,
-    name,
-    alias: '',
-    comment: '',
-    levels: [{ tileSize: 256, size: 256, fallbackOnly: true }],
-    faceSize: 2048,
-    initialViewParameters: { yaw: 0, pitch: 0, fov: getSelectedSceneFov() },
-    orientationSaved: false,
-    hotspots: []
-  };
+  return runtimeSceneActions?.createSceneRecord(name, groupId) || null;
 }
 
 function sceneNameFromFile(fileName) {
@@ -6629,318 +6465,51 @@ function sceneNameFromFile(fileName) {
 }
 
 function setMainSceneForSelectedGroup() {
-  const scene = getSelectedScene();
-  if (!scene) {
-    updateStatus('Select a scene first.');
-    return;
-  }
-  const group = getGroupById(scene.groupId);
-  if (!group) {
-    updateStatus('No active group found for this scene.');
-    return;
-  }
-
-  group.mainSceneId = scene.id;
-  state.selectedGroupId = group.id;
-  renderSceneList();
-  renderSceneGroupOptions();
-  updateStatus(`"${scene.name || scene.id}" set as main scene for "${group.name}".`);
-  autosave();
+  runtimeSceneActions?.setMainSceneForSelectedGroup();
 }
 
 function ensureMainSceneForGroup(groupId, candidateSceneId = null) {
-  const group = getGroupById(groupId);
-  if (!group) return;
-  const groupScenes = (state.project?.scenes || []).filter((scene) => scene.groupId === groupId);
-  if (!groupScenes.length) {
-    group.mainSceneId = null;
-    return;
-  }
-  if (candidateSceneId && groupScenes.some((scene) => scene.id === candidateSceneId) && !group.mainSceneId) {
-    group.mainSceneId = candidateSceneId;
-    return;
-  }
-  if (!group.mainSceneId || !groupScenes.some((scene) => scene.id === group.mainSceneId)) {
-    group.mainSceneId = groupScenes[0].id;
-  }
+  runtimeSceneActions?.ensureMainSceneForGroup(groupId, candidateSceneId);
 }
 
 function normalizeGroupName(name) {
-  return String(name || '').trim().toLowerCase();
+  return runtimeSceneActions?.normalizeGroupName(name) || '';
 }
 
 function hasDuplicateGroupName(nextName, currentGroupId = null) {
-  const normalized = normalizeGroupName(nextName);
-  if (!normalized) return false;
-  return (state.project?.groups || []).some((group) =>
-    group.id !== currentGroupId && normalizeGroupName(group.name) === normalized
-  );
+  return runtimeSceneActions?.hasDuplicateGroupName(nextName, currentGroupId) || false;
 }
 
 function addGroup() {
-  const name = prompt('Group name');
-  if (!name) return;
-  const trimmedName = name.trim() || 'New Group';
-  if (hasDuplicateGroupName(trimmedName)) {
-    alert(`Group name "${trimmedName}" already exists. Choose a different name.`);
-    updateStatus(`Group not created: "${trimmedName}" already exists.`);
-    return;
-  }
-  const group = {
-    id: `group-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-    name: trimmedName,
-    mainSceneId: null
-  };
-  state.project.groups.push(group);
-  if (!state.project.activeGroupId) {
-    state.project.activeGroupId = group.id;
-  }
-  state.selectedGroupId = group.id;
-  state.selectedSceneId = null;
-  state.selectedHotspotId = null;
-  state.selectedFloorplanId = getFloorplanForGroup(group.id)?.id || null;
-  renderAll();
-  updateStatus(`Group "${group.name}" created. Upload a floorplan for this group.`);
-  autosave();
+  runtimeSceneActions?.addGroup();
 }
 
 function setSelectedGroupAsMain() {
-  const group = getSelectedGroup();
-  if (!group) {
-    updateStatus('Select a group first.');
-    return;
-  }
-  state.project.activeGroupId = group.id;
-  renderSceneGroupOptions();
-  renderSceneList();
-  renderFloorplans();
-  updateStatus(`Group "${group.name}" set as default group.`);
-  autosave();
+  runtimeSceneActions?.setSelectedGroupAsMain();
 }
 
 function renameSelectedGroup() {
-  const group = getSelectedGroup();
-  if (!group) {
-    updateStatus('Select a group first.');
-    return;
-  }
-  const nextName = prompt('Group name', group.name || '');
-  if (nextName == null) return;
-  const trimmedName = nextName.trim() || 'Untitled Group';
-  if (hasDuplicateGroupName(trimmedName, group.id)) {
-    alert(`Group name "${trimmedName}" already exists. Choose a different name.`);
-    updateStatus(`Rename cancelled: "${trimmedName}" already exists.`);
-    return;
-  }
-  group.name = trimmedName;
-  renderSceneGroupOptions();
-  updateStatus(`Group renamed to "${group.name}".`);
-  autosave();
+  runtimeSceneActions?.renameSelectedGroup();
 }
 
 function deleteGroup() {
-  deleteGroupById(state.selectedGroupId);
+  runtimeSceneActions?.deleteGroup();
 }
 
 function deleteGroupById(groupId) {
-  const groups = state.project?.groups || [];
-  if (groups.length <= 1) {
-    updateStatus('At least one group is required.');
-    return;
-  }
-  const group = groups.find((item) => item.id === groupId) || null;
-  if (!group) return;
-  const fallback = groups.find((item) => item.id !== group.id);
-  if (!fallback) return;
-  const scenesToDelete = (state.project.scenes || []).filter((scene) => scene.groupId === group.id);
-  const sceneCount = scenesToDelete.length;
-  const deletedSceneIds = new Set(scenesToDelete.map((scene) => scene.id));
-  const floorplansForGroup = (state.project.minimap.floorplans || []).filter((fp) => fp.groupId === group.id);
-  const mapCount = floorplansForGroup.length;
-  const mapNodeCount = floorplansForGroup.reduce((total, fp) => total + ((fp.nodes || []).length), 0);
-  let inboundSceneLinkCount = 0;
-  (state.project.scenes || []).forEach((scene) => {
-    if (scene.groupId === group.id) return;
-    (scene.hotspots || []).forEach((hotspot) => {
-      (hotspot.contentBlocks || []).forEach((block) => {
-        if (block.type === 'scene' && deletedSceneIds.has(block.sceneId)) {
-          inboundSceneLinkCount += 1;
-        }
-      });
-    });
-  });
-
-  const warningLines = [
-    `Delete group "${group.name}"?`,
-    '',
-    'This action will:',
-    `- Delete ${sceneCount} image/scene(s) in this group`,
-    mapCount ? `- Delete ${mapCount} map file(s) linked to this group` : '- No map file linked to this group',
-    mapNodeCount ? `- Remove ${mapNodeCount} map point(s)` : '- No map points to remove',
-    inboundSceneLinkCount
-      ? `- Remove ${inboundSceneLinkCount} scene-link reference(s) from other groups/scenes`
-      : '- No incoming scene-link references from other groups/scenes',
-    '',
-    'This cannot be undone.'
-  ];
-  const confirmed = window.confirm(warningLines.join('\n'));
-  if (!confirmed) return;
-
-  scenesToDelete.forEach((scene) => {
-    generatedTiles.delete(scene.id);
-    editorScenes.delete(scene.id);
-  });
-  if (pendingSceneLinkDraft && deletedSceneIds.has(pendingSceneLinkDraft.sceneId)) {
-    clearPendingSceneLinkDraft(false);
-  }
-  state.project.scenes = (state.project.scenes || []).filter((scene) => !deletedSceneIds.has(scene.id));
-  clearSceneTargetReferences(deletedSceneIds);
-
-  state.project.minimap.floorplans = (state.project.minimap.floorplans || []).filter((fp) => fp.groupId !== group.id);
-  state.project.groups = groups.filter((item) => item.id !== group.id);
-  if (state.project.activeGroupId === group.id) {
-    state.project.activeGroupId = fallback.id;
-  }
-  ensureMainSceneForGroup(fallback.id);
-
-  state.selectedGroupId = fallback.id;
-  const preferredScene = getPreferredSceneForGroup(state.selectedGroupId);
-  state.selectedSceneId = preferredScene?.id || null;
-  state.selectedHotspotId = preferredScene?.hotspots?.[0]?.id || null;
-  state.selectedFloorplanId = getFloorplanForGroup(fallback.id)?.id || null;
-  renderAll();
-  updateStatus(`Group "${group.name}" deleted. Removed ${sceneCount} images/scenes.`);
-  autosave();
+  runtimeSceneActions?.deleteGroupById(groupId);
 }
 
 function deleteSceneById(sceneId) {
-  const sceneIndex = state.project.scenes.findIndex((scene) => scene.id === sceneId);
-  if (sceneIndex === -1) return;
-  const [removed] = state.project.scenes.splice(sceneIndex, 1);
-  if (pendingSceneLinkDraft?.sceneId === removed?.id) {
-    clearPendingSceneLinkDraft(false);
-  }
-  if (removed?.id) {
-    generatedTiles.delete(removed.id);
-    editorScenes.delete(removed.id);
-    const floorplans = state.project?.minimap?.floorplans || [];
-    floorplans.forEach((floorplan) => {
-      floorplan.nodes = (floorplan.nodes || []).filter((node) => node.sceneId !== removed.id);
-    });
-    clearSceneTargetReferences(new Set([removed.id]));
-    ensureMainSceneForGroup(removed.groupId);
-  }
-  const fallbackScene =
-    getPreferredSceneForGroup(state.selectedGroupId) ||
-    state.project.scenes[0] ||
-    null;
-  state.selectedSceneId = fallbackScene?.id || null;
-  state.selectedHotspotId = fallbackScene?.hotspots?.[0]?.id || null;
-  renderAll();
-  autosave();
+  runtimeSceneActions?.deleteSceneById(sceneId);
 }
 
 function deleteSelectedScenes() {
-  if (!state.project?.scenes?.length) {
-    updateStatus('No scenes available.');
-    return;
-  }
-
-  const selectedIds = new Set(
-    (state.multiSelectedSceneIds || [])
-      .filter(Boolean)
-      .filter((sceneId) => state.project.scenes.some((scene) => scene.id === sceneId))
-  );
-  if (!selectedIds.size && state.selectedSceneId) {
-    selectedIds.add(state.selectedSceneId);
-  }
-  if (!selectedIds.size) {
-    updateStatus('Select at least one scene.');
-    return;
-  }
-
-  const scenesToDelete = (state.project.scenes || []).filter((scene) => selectedIds.has(scene.id));
-  if (!scenesToDelete.length) {
-    updateStatus('Select at least one scene.');
-    return;
-  }
-
-  const deletedSceneIds = new Set(scenesToDelete.map((scene) => scene.id));
-  const confirmed = window.confirm(
-    `Delete ${scenesToDelete.length} selected scene(s)? This removes their tiles and map points, and clears links targeting them. This cannot be undone.`
-  );
-  if (!confirmed) return;
-
-  if (pendingSceneLinkDraft && deletedSceneIds.has(pendingSceneLinkDraft.sceneId)) {
-    clearPendingSceneLinkDraft(false);
-  }
-
-  scenesToDelete.forEach((scene) => {
-    generatedTiles.delete(scene.id);
-    editorScenes.delete(scene.id);
-  });
-
-  state.project.scenes = (state.project.scenes || []).filter((scene) => !deletedSceneIds.has(scene.id));
-  clearSceneTargetReferences(deletedSceneIds);
-
-  (state.project?.minimap?.floorplans || []).forEach((floorplan) => {
-    floorplan.nodes = (floorplan.nodes || []).filter((node) => !deletedSceneIds.has(node.sceneId));
-  });
-
-  const affectedGroups = new Set(scenesToDelete.map((scene) => scene.groupId).filter(Boolean));
-  affectedGroups.forEach((groupId) => ensureMainSceneForGroup(groupId));
-
-  const fallbackScene =
-    getPreferredSceneForGroup(state.selectedGroupId) ||
-    state.project.scenes[0] ||
-    null;
-  state.selectedSceneId = fallbackScene?.id || null;
-  state.selectedHotspotId = fallbackScene?.hotspots?.[0]?.id || null;
-  state.multiSelectedSceneIds = state.selectedSceneId ? [state.selectedSceneId] : [];
-  state.sceneSelectionAnchorId = state.selectedSceneId || null;
-
-  renderAll();
-  updateStatus(`Deleted ${scenesToDelete.length} selected scene(s).`);
-  autosave();
+  runtimeSceneActions?.deleteSelectedScenes();
 }
 
 function clearSceneTargetReferences(deletedSceneIds) {
-  if (!deletedSceneIds || !deletedSceneIds.size) return;
-  (state.project?.scenes || []).forEach((scene) => {
-    const hotspots = scene.hotspots || [];
-    scene.hotspots = hotspots.filter((hotspot) => {
-      const blocks = hotspot.contentBlocks || [];
-      let removedLinks = 0;
-      const nextBlocks = blocks.filter((block) => {
-        const isDeletedTarget = block.type === 'scene' && deletedSceneIds.has(block.sceneId);
-        if (isDeletedTarget) {
-          removedLinks += 1;
-          return false;
-        }
-        return true;
-      });
-
-      if (!removedLinks) {
-        return true;
-      }
-
-      hotspot.contentBlocks = nextBlocks;
-      if (!nextBlocks.some((block) => block.type === 'scene')) {
-        delete hotspot.linkCode;
-      }
-
-      // If a link-only hotspot has no content left, drop it entirely.
-      return nextBlocks.length > 0;
-    });
-
-    if (
-      scene.id === state.selectedSceneId &&
-      state.selectedHotspotId &&
-      !scene.hotspots.some((hotspot) => hotspot.id === state.selectedHotspotId)
-    ) {
-      state.selectedHotspotId = scene.hotspots[0]?.id || null;
-    }
-  });
+  runtimeSceneActions?.clearSceneTargetReferences(deletedSceneIds);
 }
 
 function deleteAllScenes() {
@@ -8993,12 +8562,6 @@ projectNameInput.addEventListener('input', (event) => updateProjectName(event.ta
 projectFovInput?.addEventListener('input', (event) => updateProjectFov(event.target.value));
 projectFovInput?.addEventListener('change', (event) => updateProjectFov(event.target.value, { commit: true }));
 btnResetProject?.addEventListener('click', resetProjectWithConfirmation);
-sceneCommentInput?.addEventListener('input', (event) => {
-  const scene = getSelectedScene();
-  if (!scene) return;
-  scene.comment = event.target.value || '';
-  autosave();
-});
 linkTargetAllGroupsToggle?.addEventListener('change', (event) => {
   state.linkTargetAllGroups = Boolean(event.target.checked);
   renderLinkEditor();
