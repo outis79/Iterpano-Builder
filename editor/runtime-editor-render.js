@@ -44,7 +44,14 @@
 
     function updateSceneTitle() {
       const scene = getSelectedScene();
-      sceneTitle.textContent = scene ? `Scene: ${scene.name}` : 'Scene: -';
+      if (!scene) {
+        sceneTitle.textContent = '-';
+        return;
+      }
+      const alias = String(scene.alias || '').trim();
+      sceneTitle.textContent = alias
+        ? `${scene.name} (${alias})`
+        : `${scene.name}`;
     }
 
     function syncSceneFovInput() {

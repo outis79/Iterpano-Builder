@@ -131,6 +131,10 @@ body {
   margin-bottom: 13px;
 }
 
+.panel-section[hidden] {
+  display: none !important;
+}
+
 .section-title {
   font-size: 13px;
   color: var(--muted);
@@ -292,6 +296,20 @@ textarea:disabled {
   border-color: rgba(240, 200, 75, 0.7);
   background: rgba(240, 200, 75, 0.2);
   color: var(--accent);
+}
+
+.scene-action.scene-orientation-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.scene-orientation-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: currentColor;
 }
 
 .inline-actions {
@@ -779,7 +797,7 @@ textarea:disabled {
 
 .hotspot-modal.preview-modal-rich-like .modal-header {
   position: absolute;
-  top: -10px !important;
+  top: -20px !important;
   right: -10px;
   left: auto;
   z-index: 3;
@@ -1173,8 +1191,10 @@ textarea:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1;
+  border-color: transparent;
 }
 
 .modal-body {
@@ -1313,12 +1333,14 @@ textarea:disabled {
 }
 
 .modal-body .block a {
-  color: var(--accent);
-  text-decoration: none;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .modal-body .block a:hover {
-  text-decoration: underline;
+  opacity: 0.88;
 }
 
 .confirm-modal-actions {

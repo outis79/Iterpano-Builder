@@ -24,6 +24,8 @@
       switchEditorScene,
       autosave,
       updateStatus,
+      askDeleteConfirmation,
+      askGroupName,
     } = options;
 
     function selectScene(sceneId) {
@@ -143,10 +145,20 @@
       autosave();
     }
 
-    function addGroup() {
-      const name = windowRef.prompt('Group name');
-      if (!name) return;
-      const trimmedName = name.trim() || 'New Group';
+    async function addGroup() {
+      const result = askGroupName
+        ? await askGroupName({
+          title: 'Add Group',
+          label: 'Group name',
+          confirmLabel: 'Add',
+          value: '',
+        })
+        : {
+          confirmed: true,
+          value: windowRef.prompt('Group name') || '',
+        };
+      if (!result?.confirmed) return;
+      const trimmedName = String(result.value || '').trim() || 'New Group';
       if (hasDuplicateGroupName(trimmedName)) {
         windowRef.alert(`Group name "${trimmedName}" already exists. Choose a different name.`);
         updateStatus(`Group not created: "${trimmedName}" already exists.`);
@@ -184,15 +196,25 @@
       autosave();
     }
 
-    function renameSelectedGroup() {
+    async function renameSelectedGroup() {
       const group = getSelectedGroup();
       if (!group) {
         updateStatus('Select a group first.');
         return;
       }
-      const nextName = windowRef.prompt('Group name', group.name || '');
-      if (nextName == null) return;
-      const trimmedName = nextName.trim() || 'Untitled Group';
+      const result = askGroupName
+        ? await askGroupName({
+          title: 'Rename Group',
+          label: 'Group name',
+          confirmLabel: 'Rename',
+          value: group.name || '',
+        })
+        : {
+          confirmed: true,
+          value: windowRef.prompt('Group name', group.name || '') || '',
+        };
+      if (!result?.confirmed) return;
+      const trimmedName = String(result.value || '').trim() || 'Untitled Group';
       if (hasDuplicateGroupName(trimmedName, group.id)) {
         windowRef.alert(`Group name "${trimmedName}" already exists. Choose a different name.`);
         updateStatus(`Rename cancelled: "${trimmedName}" already exists.`);
@@ -262,11 +284,11 @@
       });
     }
 
-    function deleteGroup() {
-      deleteGroupById(state.selectedGroupId);
+    async function deleteGroup() {
+      await deleteGroupById(state.selectedGroupId);
     }
 
-    function deleteGroupById(groupId) {
+    async function deleteGroupById(groupId) {
       const groups = state.project?.groups || [];
       if (groups.length <= 1) {
         updateStatus('At least one group is required.');
@@ -307,7 +329,12 @@
         '',
         'This cannot be undone.'
       ];
-      const confirmed = windowRef.confirm(warningLines.join('\n'));
+      const confirmed = askDeleteConfirmation
+        ? await askDeleteConfirmation({
+          title: 'Delete Group',
+          message: warningLines.join('\n'),
+        })
+        : windowRef.confirm(warningLines.join('\n'));
       if (!confirmed) return;
 
       scenesToDelete.forEach((scene) => {
@@ -364,7 +391,7 @@
       autosave();
     }
 
-    function deleteSelectedScenes() {
+    async function deleteSelectedScenes() {
       if (!state.project?.scenes?.length) {
         updateStatus('No scenes available.');
         return;
@@ -390,9 +417,34 @@
       }
 
       const deletedSceneIds = new Set(scenesToDelete.map((scene) => scene.id));
-      const confirmed = windowRef.confirm(
-        `Delete ${scenesToDelete.length} selected scene(s)? This removes their tiles and map points, and clears links targeting them. This cannot be undone.`
-      );
+      const confirmed = askDeleteConfirmation
+        ? await askDeleteConfirmation({
+          title: 'Delete Selected Scenes',
+          message: [
+            `Delete ${scenesToDelete.length} selected scene(s)?`,
+            '',
+            'This will remove:',
+            '- the selected scenes and all their hotspots',
+            '- their scene links',
+            '- their floorplan placements',
+            '- their generated tiles and scene metadata',
+            '- incoming scene links from other scenes that target them',
+            '',
+            'This cannot be undone.'
+          ].join('\n'),
+        })
+        : windowRef.confirm([
+          `Delete ${scenesToDelete.length} selected scene(s)?`,
+          '',
+          'This will remove:',
+          '- the selected scenes and all their hotspots',
+          '- their scene links',
+          '- their floorplan placements',
+          '- their generated tiles and scene metadata',
+          '- incoming scene links from other scenes that target them',
+          '',
+          'This cannot be undone.'
+        ].join('\n'));
       if (!confirmed) return;
 
       if (getPendingSceneLinkDraft() && deletedSceneIds.has(getPendingSceneLinkDraft().sceneId)) {

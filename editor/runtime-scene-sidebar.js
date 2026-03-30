@@ -6,7 +6,6 @@
       sceneList,
       btnSetMainGroup,
       btnSetMainScene,
-      btnSetOrientation,
       btnDeleteSelectedScenes,
       btnSceneSortName,
       btnSceneSortUpload,
@@ -15,7 +14,7 @@
       getSelectedGroup,
       getScenesForSelectedGroup,
       getSceneListLabel,
-      sceneHasGeneratedTiles,
+      setSceneOrientationById,
       renderFloorplans,
       selectScene,
       deleteSceneById,
@@ -89,9 +88,6 @@
       const multiSelected = new Set(state.multiSelectedSceneIds);
       if (btnSetMainScene) {
         btnSetMainScene.disabled = scenes.length === 0;
-      }
-      if (btnSetOrientation) {
-        btnSetOrientation.disabled = !Boolean(getSelectedScene());
       }
       if (btnDeleteSelectedScenes) {
         btnDeleteSelectedScenes.disabled = !Boolean(getSelectedScene());
@@ -171,17 +167,24 @@
           deleteSceneById(scene.id);
         });
 
-        const tilesIndicator = document.createElement('button');
-        const tilesReady = sceneHasGeneratedTiles(scene);
-        tilesIndicator.className = `scene-action scene-tile-indicator${tilesReady ? ' tile-ready' : ''}`;
-        tilesIndicator.type = 'button';
-        tilesIndicator.disabled = true;
-        tilesIndicator.title = tilesReady ? 'Tiles created' : 'Tiles not created';
-        tilesIndicator.setAttribute('aria-label', tilesReady ? 'Tiles created' : 'Tiles not created');
-        tilesIndicator.textContent = 'T';
+        const orientationBtn = document.createElement('button');
+        orientationBtn.className = 'scene-action scene-orientation-action';
+        orientationBtn.type = 'button';
+        orientationBtn.title = scene.orientationSaved ? 'Orientation saved' : 'Set orientation';
+        orientationBtn.setAttribute('aria-label', scene.orientationSaved ? 'Orientation saved' : 'Set orientation');
+        orientationBtn.innerHTML = [
+          '<svg class="scene-orientation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">',
+          '<path d="M12 2L20 20L12 16.5L4 20L12 2Z"></path>',
+          '</svg>'
+        ].join('');
+        orientationBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setSceneOrientationById(scene.id);
+        });
 
         row.appendChild(main);
-        row.appendChild(tilesIndicator);
+        row.appendChild(orientationBtn);
         row.appendChild(deleteBtn);
         sceneList.appendChild(row);
       });

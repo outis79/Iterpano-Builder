@@ -132,6 +132,9 @@
       modalBody.style.removeProperty('height');
       modalBody.style.removeProperty('max-height');
       modalBody.style.removeProperty('background-color');
+      modalBody.style.removeProperty('border-color');
+      closeModalButton?.style.removeProperty('color');
+      closeModalButton?.style.removeProperty('border-color');
       modal?.classList.remove('preview-modal-rich-like');
       modalContent.classList.remove('modal-content-rich-preview');
       modalBody.classList.remove('preview-rich-surface');
@@ -140,9 +143,16 @@
     function applyInfoModalVisualStyle(hotspot) {
       if (!modalBody) return;
       const visualStyle = getFrameVisualStyle(hotspot);
-      const hex = floorplanColorMap[visualStyle.backgroundColorKey] || floorplanColorMap[defaultInfoBgColorKey];
+      const backgroundHex = floorplanColorMap[visualStyle.backgroundColorKey] || floorplanColorMap[defaultInfoBgColorKey];
+      const borderColorKey = normalizeFloorplanColorKey(hotspot?.markerColorKey || visualStyle.backgroundColorKey || defaultInfoBgColorKey);
+      const borderHex = floorplanColorMap[borderColorKey] || floorplanColorMap[defaultInfoBgColorKey];
       const alpha = (100 - visualStyle.backgroundTransparency) / 100;
-      modalBody.style.backgroundColor = withAlpha(hex, alpha);
+      modalBody.style.backgroundColor = withAlpha(backgroundHex, alpha);
+      modalBody.style.borderColor = borderHex;
+      if (closeModalButton) {
+        closeModalButton.style.color = borderHex;
+        closeModalButton.style.borderColor = 'transparent';
+      }
     }
 
     function measureRichInfoModalFrame(maxWidth, maxHeight) {
@@ -467,7 +477,7 @@
     function createHotspotElement(hotspot) {
       const wrapper = document.createElement('div');
       wrapper.className = 'hotspot';
-      wrapper.setAttribute('aria-label', hotspot.title || 'Hotspot');
+      wrapper.removeAttribute('title');
       const isSceneLink = Boolean((hotspot.contentBlocks || []).some((block) => block.type === 'scene'));
       if (isSceneLink) {
         const targetScene = getHotspotSceneTargetRuntime(hotspot);
@@ -476,7 +486,7 @@
         wrapper.style.setProperty('--scene-link-color', linkColor);
         wrapper.style.setProperty('--scene-link-border', darkenHex(linkColor, 0.24));
         wrapper.style.setProperty('--scene-link-ring', withAlpha(linkColor, 0.35));
-        wrapper.setAttribute('aria-label', getSceneLinkHoverLabel(hotspot, targetScene));
+        wrapper.removeAttribute('aria-label');
         wrapper.addEventListener('mouseenter', () => {
           showSceneLinkTooltip(wrapper, getSceneLinkHoverLabel(hotspot, targetScene));
         });
@@ -485,6 +495,7 @@
         });
         wrapper.addEventListener('mouseleave', hideSceneLinkTooltip);
       } else {
+        wrapper.setAttribute('aria-label', hotspot.title || 'Hotspot');
         const infoColor = floorplanColorMap[normalizeFloorplanColorKey(hotspot.markerColorKey || 'yellow')];
         wrapper.style.setProperty('--info-hotspot-color', withAlpha(infoColor, 0.9));
         wrapper.style.setProperty('--info-hotspot-border', darkenHex(infoColor, 0.28));

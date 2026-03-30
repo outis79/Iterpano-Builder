@@ -49,10 +49,6 @@
     }
 
     function deleteSelectedFloorplanNode() {
-      if (!getFloorplanEditMode()) {
-        updateStatus('Enable Edit to delete map points.');
-        return;
-      }
       const floorplan = getSelectedFloorplan();
       if (!floorplan) return;
       if (getFloorplanSelectAllMode()) {

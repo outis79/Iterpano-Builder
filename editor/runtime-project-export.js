@@ -17,6 +17,7 @@
       buildStaticPackageRootIndexHtml,
       writeFile,
       writePathFile,
+      askDeleteConfirmation,
     } = options;
 
     function exportProject() {
@@ -72,7 +73,15 @@
           lines.push('');
         }
         lines.push('Continue with static export?');
-        if (!window.confirm(lines.join('\n'))) {
+        const confirmed = askDeleteConfirmation
+          ? await askDeleteConfirmation({
+            title: 'Static Export Warnings',
+            message: lines.join('\n'),
+            confirmLabel: 'Continue',
+            cancelLabel: 'Cancel',
+          })
+          : window.confirm(lines.join('\n'));
+        if (!confirmed) {
           updateStatus('Static export cancelled.');
           return;
         }

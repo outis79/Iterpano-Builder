@@ -41,18 +41,24 @@
       groupsPanelBody,
       btnToggleScenesPanel,
       scenesPanelBody,
+      btnToggleHomePagePanel,
+      homePagePanelBody,
+      btnToggleInfoHotspotsPanel,
+      infoHotspotsPanelBody,
       btnToggleMapPanel,
       mapPanelBody,
       btnToggleSceneActionsPanel,
       sceneActionsPanelBody,
     } = options;
 
-    setSectionCollapsed(btnToggleProjectPanel, projectPanelBody, false);
-    setSectionCollapsed(btnToggleGroupsPanel, groupsPanelBody, false);
-    setSectionCollapsed(btnToggleScenesPanel, scenesPanelBody, false);
-    setSectionCollapsed(btnToggleMapPanel, mapPanelBody, true);
-    setSectionCollapsed(btnToggleSceneActionsPanel, sceneActionsPanelBody, true);
-    setLinksPanelCollapsed(true);
+      setSectionCollapsed(btnToggleProjectPanel, projectPanelBody, false);
+      setSectionCollapsed(btnToggleGroupsPanel, groupsPanelBody, false);
+      setSectionCollapsed(btnToggleScenesPanel, scenesPanelBody, false);
+      setSectionCollapsed(btnToggleHomePagePanel, homePagePanelBody, true);
+      setSectionCollapsed(btnToggleInfoHotspotsPanel, infoHotspotsPanelBody, true);
+      setSectionCollapsed(btnToggleMapPanel, mapPanelBody, true);
+      setSectionCollapsed(btnToggleSceneActionsPanel, sceneActionsPanelBody, true);
+      setLinksPanelCollapsed(true);
     setFloorplanMapWindowOpen(false);
   }
 

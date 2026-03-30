@@ -361,7 +361,9 @@ body.viewer-pseudo-fullscreen .license-footer {
 
 body.viewer-fullscreen .viewer-shell,
 body.viewer-pseudo-fullscreen .viewer-shell {
+  grid-template-columns: 1fr;
   min-height: 100vh;
+  height: 100vh;
 }
 
 body.viewer-pseudo-fullscreen .viewer-shell {
@@ -369,6 +371,21 @@ body.viewer-pseudo-fullscreen .viewer-shell {
   inset: 0;
   z-index: 100;
   background: var(--bg);
+}
+
+body.viewer-fullscreen .side-panel,
+body.viewer-pseudo-fullscreen .side-panel {
+  display: none;
+}
+
+body.viewer-fullscreen .pano,
+body.viewer-pseudo-fullscreen .pano,
+body.viewer-fullscreen .pano-single,
+body.viewer-pseudo-fullscreen .pano-single,
+body.viewer-fullscreen .pano-vr,
+body.viewer-pseudo-fullscreen .pano-vr {
+  width: 100%;
+  height: 100vh;
 }
 
 .hotspot-modal {
@@ -441,19 +458,20 @@ body.viewer-pseudo-fullscreen .viewer-shell {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1;
+  border-color: transparent;
 }
 
 .hotspot-modal.preview-modal-rich-like .modal-close-x {
-  background: var(--accent);
-  border-color: rgba(0, 0, 0, 0.35);
-  color: #111;
+  background: transparent;
+  border-color: transparent;
 }
 
 .hotspot-modal.preview-modal-rich-like .modal-header {
   position: absolute;
-  top: -10px !important;
+  top: -20px !important;
   right: -10px;
   left: auto;
   z-index: 3;
@@ -587,12 +605,14 @@ body.viewer-pseudo-fullscreen .viewer-shell {
 }
 
 .block a {
-  color: var(--accent);
-  text-decoration: none;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .block a:hover {
-  text-decoration: underline;
+  opacity: 0.88;
 }
 
 .block img {

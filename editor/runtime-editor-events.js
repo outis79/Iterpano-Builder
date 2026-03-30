@@ -26,6 +26,7 @@
       btnUploadPanorama,
       btnGenerateTiles,
       btnGenerateAllTiles,
+      btnCheckMissingTiles,
       btnTilesInfo,
       btnDeleteSelectedScenes,
       btnPauseTiles,
@@ -46,6 +47,10 @@
       groupsPanelBody,
       btnToggleScenesPanel,
       scenesPanelBody,
+      btnToggleHomePagePanel,
+      homePagePanelBody,
+      btnToggleInfoHotspotsPanel,
+      infoHotspotsPanelBody,
       btnSceneSortName,
       btnSceneSortUpload,
       btnSceneLabelMode,
@@ -70,6 +75,15 @@
       btnDeleteLinksScene,
       btnDeleteLinksGroup,
       btnDeleteLinksCancel,
+      btnDeleteConfirm,
+      btnDeleteConfirmCancel,
+      btnResetConfirm,
+      btnResetConfirmCancel,
+      btnGroupNameConfirm,
+      btnGroupNameCancel,
+      btnInfoMessageClose,
+      btnTileOptionsConfirm,
+      btnTileOptionsCancel,
       btnDuplicatePanoramaProceed,
       btnDuplicatePanoramaAcceptAll,
       btnDuplicatePanoramaSkip,
@@ -81,6 +95,11 @@
       btnGenerateAllTilesOverwrite,
       btnGenerateAllTilesCancel,
       deleteLinksScopeModal,
+      deleteConfirmModal,
+      resetConfirmModal,
+      groupNameModal,
+      infoMessageModal,
+      tileOptionsModal,
       duplicatePanoramaModal,
       duplicatePanoramaListModal,
       generateAllTilesModal,
@@ -117,6 +136,7 @@
       uploadPanoramaFiles,
       generateTilesForSelectedScenes,
       generateAllTiles,
+      checkScenesWithoutTiles,
       showTileSizingInfo,
       deleteSelectedScenes,
       pauseTiling,
@@ -164,6 +184,11 @@
       saveHomePageState,
       openHomePagePreview,
       resolveDeleteLinksScope,
+      resolveDeleteConfirmation,
+      resolveResetConfirmation,
+      resolveGroupNameModal,
+      resolveInfoMessageModal,
+      resolveTileOptionsModal,
       resolveDuplicatePanoramaChoice,
       openDuplicatePanoramaListModal,
       closeDuplicatePanoramaListModal,
@@ -282,6 +307,7 @@
       btnUploadPanorama?.addEventListener('click', () => filePanorama.click());
       btnGenerateTiles?.addEventListener('click', generateTilesForSelectedScenes);
       btnGenerateAllTiles?.addEventListener('click', generateAllTiles);
+      btnCheckMissingTiles?.addEventListener('click', checkScenesWithoutTiles);
       btnTilesInfo?.addEventListener('click', showTileSizingInfo);
       btnDeleteSelectedScenes?.addEventListener('click', deleteSelectedScenes);
       btnPauseTiles?.addEventListener('click', pauseTiling);
@@ -304,6 +330,8 @@
       btnToggleProjectPanel?.addEventListener('click', () => toggleSection(btnToggleProjectPanel, projectPanelBody));
       btnToggleGroupsPanel?.addEventListener('click', () => toggleSection(btnToggleGroupsPanel, groupsPanelBody));
       btnToggleScenesPanel?.addEventListener('click', () => toggleSection(btnToggleScenesPanel, scenesPanelBody));
+      btnToggleHomePagePanel?.addEventListener('click', () => toggleSection(btnToggleHomePagePanel, homePagePanelBody));
+      btnToggleInfoHotspotsPanel?.addEventListener('click', () => toggleSection(btnToggleInfoHotspotsPanel, infoHotspotsPanelBody));
       btnSceneSortName?.addEventListener('click', () => toggleSceneSort('name'));
       btnSceneSortUpload?.addEventListener('click', () => toggleSceneSort('date'));
       btnSceneLabelMode?.addEventListener('click', toggleSceneLabelMode);
@@ -443,6 +471,15 @@
       btnDeleteLinksScene?.addEventListener('click', () => resolveDeleteLinksScope('scene'));
       btnDeleteLinksGroup?.addEventListener('click', () => resolveDeleteLinksScope('group'));
       btnDeleteLinksCancel?.addEventListener('click', () => resolveDeleteLinksScope(null));
+      btnDeleteConfirm?.addEventListener('click', () => resolveDeleteConfirmation(true));
+      btnDeleteConfirmCancel?.addEventListener('click', () => resolveDeleteConfirmation(false));
+      btnResetConfirm?.addEventListener('click', () => resolveResetConfirmation(true));
+      btnResetConfirmCancel?.addEventListener('click', () => resolveResetConfirmation(false));
+      btnGroupNameConfirm?.addEventListener('click', () => resolveGroupNameModal(true));
+      btnGroupNameCancel?.addEventListener('click', () => resolveGroupNameModal(false));
+      btnInfoMessageClose?.addEventListener('click', resolveInfoMessageModal);
+      btnTileOptionsConfirm?.addEventListener('click', () => resolveTileOptionsModal(true));
+      btnTileOptionsCancel?.addEventListener('click', () => resolveTileOptionsModal(false));
       btnDuplicatePanoramaProceed?.addEventListener('click', () => resolveDuplicatePanoramaChoice('proceed'));
       btnDuplicatePanoramaAcceptAll?.addEventListener('click', () => resolveDuplicatePanoramaChoice('accept-all'));
       btnDuplicatePanoramaSkip?.addEventListener('click', () => resolveDuplicatePanoramaChoice('skip'));
@@ -456,6 +493,31 @@
       deleteLinksScopeModal?.addEventListener('click', (event) => {
         if (event.target === deleteLinksScopeModal) {
           resolveDeleteLinksScope(null);
+        }
+      });
+      deleteConfirmModal?.addEventListener('click', (event) => {
+        if (event.target === deleteConfirmModal) {
+          resolveDeleteConfirmation(false);
+        }
+      });
+      resetConfirmModal?.addEventListener('click', (event) => {
+        if (event.target === resetConfirmModal) {
+          resolveResetConfirmation(false);
+        }
+      });
+      groupNameModal?.addEventListener('click', (event) => {
+        if (event.target === groupNameModal) {
+          resolveGroupNameModal(false);
+        }
+      });
+      infoMessageModal?.addEventListener('click', (event) => {
+        if (event.target === infoMessageModal) {
+          resolveInfoMessageModal();
+        }
+      });
+      tileOptionsModal?.addEventListener('click', (event) => {
+        if (event.target === tileOptionsModal) {
+          resolveTileOptionsModal(false);
         }
       });
       duplicatePanoramaModal?.addEventListener('click', (event) => {
@@ -475,20 +537,43 @@
       });
       mapWindowBackdrop?.addEventListener('click', () => setFloorplanMapWindowOpen(false));
       windowRef.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && groupNameModal?.classList.contains('visible') && !event.shiftKey) {
+          event.preventDefault();
+          resolveGroupNameModal(true);
+          return;
+        }
         const blockingModalState = getBlockingModalState();
         const blockingModalOpen =
           blockingModalState.preview ||
           blockingModalState.richEditor ||
           blockingModalState.deleteLinksScope ||
+          blockingModalState.deleteConfirm ||
+          blockingModalState.resetConfirm ||
+          blockingModalState.groupName ||
+          blockingModalState.infoMessage ||
+          blockingModalState.tileOptions ||
           blockingModalState.duplicatePanorama ||
           blockingModalState.duplicatePanoramaList ||
           blockingModalState.generateAllTiles;
+        if (event.key === 'Enter' && tileOptionsModal?.classList.contains('visible') && !event.shiftKey) {
+          event.preventDefault();
+          resolveTileOptionsModal(true);
+          return;
+        }
         if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !isTypingTarget(event.target) && !blockingModalOpen) {
           const moved = moveSceneSelectionBy(event.key === 'ArrowDown' ? 1 : -1);
           if (moved) {
             event.preventDefault();
             return;
           }
+        }
+        if (event.key === 'Escape' && blockingModalState.infoMessage) {
+          resolveInfoMessageModal();
+          return;
+        }
+        if (event.key === 'Escape' && blockingModalState.tileOptions) {
+          resolveTileOptionsModal(false);
+          return;
         }
         if (event.key === 'Escape' && blockingModalState.duplicatePanoramaList) {
           closeDuplicatePanoramaListModal();

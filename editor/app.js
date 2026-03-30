@@ -61,7 +61,8 @@ const infoHotspotSelect = document.getElementById('info-hotspot-select');
 const infoHotspotModeSelect = document.getElementById('info-hotspot-mode');
 const infoHotspotColorSelect = document.getElementById('info-hotspot-color');
 const contentBlocks = document.getElementById('content-blocks');
-const infoContentSectionBody = contentBlocks?.closest('.section-body') || null;
+const infoContentSection = document.getElementById('rich-content-section');
+const infoContentSectionBody = infoContentSection?.querySelector('.section-body') || null;
 const richContentTitle = document.getElementById('rich-content-title');
 const richContentHint = document.getElementById('rich-content-hint');
 const sceneTitle = document.getElementById('scene-title');
@@ -87,6 +88,7 @@ const btnDeleteFloorplan = document.getElementById('btn-delete-floorplan');
 const btnUploadPanorama = document.getElementById('btn-upload-panorama');
 const btnGenerateTiles = document.getElementById('btn-generate-tiles');
 const btnGenerateAllTiles = document.getElementById('btn-generate-all-tiles');
+const btnCheckMissingTiles = document.getElementById('btn-check-missing-tiles');
 const btnTilesInfo = document.getElementById('btn-tiles-info');
 const btnDeleteSelectedScenes = document.getElementById('btn-delete-selected-scenes');
 const btnCancelTiles = document.getElementById('btn-cancel-tiles');
@@ -110,9 +112,22 @@ const btnToggleGroupsPanel = document.getElementById('btn-toggle-groups-panel');
 const groupsPanelBody = document.getElementById('groups-panel-body');
 const btnToggleScenesPanel = document.getElementById('btn-toggle-scenes-panel');
 const scenesPanelBody = document.getElementById('scenes-panel-body');
+const btnToggleHomePagePanel = document.getElementById('btn-toggle-home-page-panel');
+const homePagePanelBody = document.getElementById('home-page-panel-body');
+const btnToggleInfoHotspotsPanel = document.getElementById('btn-toggle-info-hotspots-panel');
+const infoHotspotsPanelBody = document.getElementById('info-hotspots-panel-body');
 const btnSceneSortName = document.getElementById('btn-scene-sort-name');
 const btnSceneSortUpload = document.getElementById('btn-scene-sort-upload');
 const btnSceneLabelMode = document.getElementById('btn-scene-label-mode');
+
+function setInfoContentSectionVisible(visible) {
+  if (!infoContentSection) return;
+  infoContentSection.hidden = !visible;
+  infoContentSection.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  infoContentSection.style.display = visible ? '' : 'none';
+}
+
+setInfoContentSectionVisible(false);
 const btnToggleMapPanel = document.getElementById('btn-toggle-map-panel');
 const mapPanelBody = document.getElementById('map-panel-body');
 const btnToggleSceneActionsPanel = document.getElementById('btn-toggle-scene-actions-panel');
@@ -182,6 +197,32 @@ const deleteLinksScopeModal = document.getElementById('delete-links-scope-modal'
 const btnDeleteLinksScene = document.getElementById('btn-delete-links-scene');
 const btnDeleteLinksGroup = document.getElementById('btn-delete-links-group');
 const btnDeleteLinksCancel = document.getElementById('btn-delete-links-cancel');
+const deleteConfirmModal = document.getElementById('delete-confirm-modal');
+const deleteConfirmTitle = document.getElementById('delete-confirm-title');
+const deleteConfirmMessage = document.getElementById('delete-confirm-message');
+const btnDeleteConfirm = document.getElementById('btn-delete-confirm');
+const btnDeleteConfirmCancel = document.getElementById('btn-delete-confirm-cancel');
+const resetConfirmModal = document.getElementById('reset-confirm-modal');
+const resetConfirmTitle = document.getElementById('reset-confirm-title');
+const resetConfirmMessage = document.getElementById('reset-confirm-message');
+const btnResetConfirm = document.getElementById('btn-reset-confirm');
+const btnResetConfirmCancel = document.getElementById('btn-reset-confirm-cancel');
+const groupNameModal = document.getElementById('group-name-modal');
+const groupNameTitle = document.getElementById('group-name-title');
+const groupNameLabel = document.getElementById('group-name-label');
+const groupNameInput = document.getElementById('group-name-input');
+const btnGroupNameConfirm = document.getElementById('btn-group-name-confirm');
+const btnGroupNameCancel = document.getElementById('btn-group-name-cancel');
+const infoMessageModal = document.getElementById('info-message-modal');
+const infoMessageTitle = document.getElementById('info-message-title');
+const infoMessageBody = document.getElementById('info-message-body');
+const btnInfoMessageClose = document.getElementById('btn-info-message-close');
+const tileOptionsModal = document.getElementById('tile-options-modal');
+const tileOptionsTitle = document.getElementById('tile-options-title');
+const tileOptionsFaceInput = document.getElementById('tile-options-face-input');
+const tileOptionsTileInput = document.getElementById('tile-options-tile-input');
+const btnTileOptionsConfirm = document.getElementById('btn-tile-options-confirm');
+const btnTileOptionsCancel = document.getElementById('btn-tile-options-cancel');
 const duplicatePanoramaModal = document.getElementById('duplicate-panorama-modal');
 const duplicatePanoramaMessage = document.getElementById('duplicate-panorama-message');
 const btnDuplicatePanoramaProceed = document.getElementById('btn-duplicate-panorama-proceed');
@@ -205,6 +246,7 @@ let tilerWorker = null;
 let lastProgressUpdate = 0;
 let activeTilingRequestId = null;
 let tilingPaused = false;
+let tilingBatchContext = null;
 let editorViewer = null;
 let editorScenes = new Map();
 let placementMode = false;
@@ -234,6 +276,11 @@ let floorplanHoverActive = false;
 const floorplanImageMetricsById = new Map();
 let floorplanResizeObserver = null;
 let deleteLinksScopeResolver = null;
+let deleteConfirmResolver = null;
+let resetConfirmResolver = null;
+let groupNameResolver = null;
+let infoMessageResolver = null;
+let tileOptionsResolver = null;
 let duplicatePanoramaResolver = null;
 let duplicatePanoramaListEntries = [];
 let generateAllTilesResolver = null;
@@ -689,13 +736,13 @@ function sanitizeRichLineHeightValue(value) {
 function sanitizeRichParagraphSpacingValue(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return '';
-  if (/^\d{1,2}px$/.test(raw)) {
+  if (/^\d{1,3}px$/.test(raw)) {
     const amount = Number.parseInt(raw, 10);
-    if (amount >= 0 && amount <= 48) return `${amount}px`;
+    if (amount >= 0 && amount <= 300) return `${amount}px`;
   }
-  if (/^\d{1,2}$/.test(raw)) {
+  if (/^\d{1,3}$/.test(raw)) {
     const amount = Number.parseInt(raw, 10);
-    if (amount >= 0 && amount <= 48) return `${amount}px`;
+    if (amount >= 0 && amount <= 300) return `${amount}px`;
   }
   return '';
 }
@@ -1460,6 +1507,19 @@ function getInfoHotspotRichContent(hotspot) {
   });
   hotspot.richContentHtml = compacted;
   return compacted;
+}
+
+function hasMeaningfulRichContent(hotspot) {
+  if (!hotspot) return false;
+  const html = sanitizeRichHtml(getInfoHotspotRichContent(hotspot));
+  if (!html.trim()) return false;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  if (template.content.querySelector('img,video,iframe,[data-layout],ul,ol,table,blockquote')) {
+    return true;
+  }
+  const text = String(template.content.textContent || '').replace(/\u00a0/g, ' ').trim();
+  return text.length > 0;
 }
 
 function setInfoHotspotRichContent(hotspot, html) {
@@ -2696,11 +2756,17 @@ function applyColumnsSpacingInRichSourceModal(spaceValue, hotspot = getSelectedI
   );
 }
 
-function insertLinkInRichSourceModal(hotspot = getSelectedInfoHotspot()) {
+async function insertLinkInRichSourceModal(hotspot = getSelectedInfoHotspot()) {
   if (!ensureRichSourceModalOpen(hotspot)) return false;
-  const url = prompt('Link URL');
-  if (!url) return false;
-  const safeUrl = escapeHtml(String(url).trim());
+  const result = await askTextInput({
+    title: 'Insert Link',
+    label: 'Link URL',
+    confirmLabel: 'Insert',
+    value: '',
+  });
+  const url = String(result?.value || '').trim();
+  if (!result?.confirmed || !url) return false;
+  const safeUrl = escapeHtml(url);
   return wrapSelectionInRichSourceModal(`<a href="${safeUrl}">`, '</a>', hotspot);
 }
 
@@ -2999,6 +3065,7 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     btnUploadPanorama,
     btnGenerateTiles,
     btnGenerateAllTiles,
+    btnCheckMissingTiles,
     btnTilesInfo,
     btnDeleteSelectedScenes,
     btnPauseTiles,
@@ -3019,6 +3086,10 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     groupsPanelBody,
     btnToggleScenesPanel,
     scenesPanelBody,
+    btnToggleHomePagePanel,
+    homePagePanelBody,
+    btnToggleInfoHotspotsPanel,
+    infoHotspotsPanelBody,
     btnSceneSortName,
     btnSceneSortUpload,
     btnSceneLabelMode,
@@ -3042,6 +3113,15 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     btnDeleteLinksScene,
     btnDeleteLinksGroup,
     btnDeleteLinksCancel,
+    btnDeleteConfirm,
+    btnDeleteConfirmCancel,
+    btnResetConfirm,
+    btnResetConfirmCancel,
+    btnGroupNameConfirm,
+    btnGroupNameCancel,
+    btnInfoMessageClose,
+    btnTileOptionsConfirm,
+    btnTileOptionsCancel,
     btnDuplicatePanoramaProceed,
     btnDuplicatePanoramaAcceptAll,
     btnDuplicatePanoramaSkip,
@@ -3053,6 +3133,11 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     btnGenerateAllTilesOverwrite,
     btnGenerateAllTilesCancel,
     deleteLinksScopeModal,
+    deleteConfirmModal,
+    resetConfirmModal,
+    groupNameModal,
+    infoMessageModal,
+    tileOptionsModal,
     duplicatePanoramaModal,
     duplicatePanoramaListModal,
     generateAllTilesModal,
@@ -3091,6 +3176,7 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     uploadPanoramaFiles,
     generateTilesForSelectedScenes,
     generateAllTiles,
+    checkScenesWithoutTiles,
     showTileSizingInfo,
     deleteSelectedScenes,
     pauseTiling,
@@ -3141,6 +3227,11 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
     saveHomePageState,
     openHomePagePreview,
     resolveDeleteLinksScope,
+    resolveDeleteConfirmation,
+    resolveResetConfirmation,
+    resolveGroupNameModal,
+    resolveInfoMessageModal,
+    resolveTileOptionsModal,
     resolveDuplicatePanoramaChoice,
     openDuplicatePanoramaListModal,
     closeDuplicatePanoramaListModal,
@@ -3152,6 +3243,11 @@ runtimeEditorEvents = safeCreateRuntimeEditorModule(
       preview: previewModal?.classList.contains('visible'),
       richEditor: richEditorModal?.classList.contains('visible'),
       deleteLinksScope: deleteLinksScopeModal?.classList.contains('visible'),
+      deleteConfirm: deleteConfirmModal?.classList.contains('visible'),
+      resetConfirm: resetConfirmModal?.classList.contains('visible'),
+      groupName: groupNameModal?.classList.contains('visible'),
+      infoMessage: infoMessageModal?.classList.contains('visible'),
+      tileOptions: tileOptionsModal?.classList.contains('visible'),
       duplicatePanorama: duplicatePanoramaModal?.classList.contains('visible'),
       duplicatePanoramaList: duplicatePanoramaListModal?.classList.contains('visible'),
       generateAllTiles: generateAllTilesModal?.classList.contains('visible'),
@@ -3263,6 +3359,8 @@ runtimeSceneActions = safeCreateRuntimeEditorModule(
     switchEditorScene,
     autosave,
     updateStatus,
+    askDeleteConfirmation,
+    askGroupName,
   }),
   [
     { label: 'IterpanoEditorSceneActions', value: window.IterpanoEditorSceneActions }
@@ -3277,7 +3375,6 @@ runtimeSceneSidebar = safeCreateRuntimeEditorModule(
     sceneList,
     btnSetMainGroup,
     btnSetMainScene,
-    btnSetOrientation,
     btnDeleteSelectedScenes,
     btnSceneSortName,
     btnSceneSortUpload,
@@ -3286,7 +3383,7 @@ runtimeSceneSidebar = safeCreateRuntimeEditorModule(
     getSelectedGroup,
     getScenesForSelectedGroup,
     getSceneListLabel,
-    sceneHasGeneratedTiles,
+    setSceneOrientationById,
     renderFloorplans,
     selectScene,
     deleteSceneById,
@@ -3328,6 +3425,7 @@ runtimeProjectExport = safeCreateRuntimeEditorModule(
     buildStaticPackageRootIndexHtml,
     writeFile,
     writePathFile,
+    askDeleteConfirmation,
   }),
   [
     { label: 'IterpanoEditorProjectExport', value: window.IterpanoEditorProjectExport }
@@ -3674,6 +3772,7 @@ function syncCustomColorSelect(selectElement) {
 }
 
 ensureCustomColorSelect(infoHotspotColorSelect, { title: 'Hotspot color' });
+ensureCustomColorSelect(linkNewColorSelect, { title: 'Link color' });
 
 function sanitizeInfoBackgroundTransparencyPercent(value, fallback = DEFAULT_INFO_BG_TRANSPARENCY) {
   return runtimeHotspotUi?.sanitizeInfoBackgroundTransparencyPercent(value, fallback) ?? fallback;
@@ -3735,6 +3834,7 @@ runtimeHotspotUi = safeCreateRuntimeEditorModule(
     previewModal,
     previewModalContent,
     previewModalBody,
+    previewCloseButton: btnClosePreview,
     getGroupById,
     getInfoHotspotFrameSize,
     getViewportClampedInfoFrameSize,
@@ -3870,7 +3970,7 @@ function updateFloorplanDeleteNodeUi() {
   if (!btnFloorplanDeleteNode) return;
   const hasFloorplan = Boolean(getSelectedFloorplan());
   const hasSelectedNodes = getSelectedFloorplanNodes().length > 0;
-  btnFloorplanDeleteNode.disabled = !hasFloorplan || !floorplanEditMode || !hasSelectedNodes;
+  btnFloorplanDeleteNode.disabled = !hasFloorplan || !hasSelectedNodes;
 }
 
 function updateFloorplanSelectAllUi() {
@@ -5261,6 +5361,242 @@ function askDeleteLinksScope() {
   });
 }
 
+function openDeleteConfirmModal(title, message) {
+  if (!deleteConfirmModal) return;
+  if (deleteConfirmTitle) {
+    deleteConfirmTitle.textContent = title || 'Confirm Delete';
+  }
+  if (deleteConfirmMessage) {
+    deleteConfirmMessage.textContent = message || '';
+  }
+  deleteConfirmModal.classList.add('visible');
+  deleteConfirmModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeDeleteConfirmModal() {
+  if (!deleteConfirmModal) return;
+  deleteConfirmModal.classList.remove('visible');
+  deleteConfirmModal.setAttribute('aria-hidden', 'true');
+}
+
+function resolveDeleteConfirmation(confirmed) {
+  if (!deleteConfirmResolver) return;
+  const resolver = deleteConfirmResolver;
+  deleteConfirmResolver = null;
+  closeDeleteConfirmModal();
+  resolver(Boolean(confirmed));
+}
+
+function askDeleteConfirmation({ title, message, confirmLabel = 'Delete', cancelLabel = 'Cancel' }) {
+  if (
+    !deleteConfirmModal ||
+    !deleteConfirmTitle ||
+    !deleteConfirmMessage ||
+    !btnDeleteConfirm ||
+    !btnDeleteConfirmCancel
+  ) {
+    const promptMessage = [title || 'Confirm Delete', '', message || 'This cannot be undone.'].join('\n');
+    return Promise.resolve(window.confirm(promptMessage));
+  }
+  btnDeleteConfirm.textContent = confirmLabel;
+  btnDeleteConfirmCancel.textContent = cancelLabel;
+  return new Promise((resolve) => {
+    deleteConfirmResolver = resolve;
+    openDeleteConfirmModal(title, message);
+  });
+}
+
+function openResetConfirmModal(title, message) {
+  if (!resetConfirmModal) return;
+  if (resetConfirmTitle) {
+    resetConfirmTitle.textContent = title || 'Reset Project';
+  }
+  if (resetConfirmMessage) {
+    resetConfirmMessage.textContent = message || '';
+  }
+  resetConfirmModal.classList.add('visible');
+  resetConfirmModal.setAttribute('aria-hidden', 'false');
+  btnResetConfirm?.focus();
+}
+
+function closeResetConfirmModal() {
+  if (!resetConfirmModal) return;
+  resetConfirmModal.classList.remove('visible');
+  resetConfirmModal.setAttribute('aria-hidden', 'true');
+}
+
+function resolveResetConfirmation(confirmed) {
+  if (!resetConfirmResolver) return;
+  const resolver = resetConfirmResolver;
+  resetConfirmResolver = null;
+  closeResetConfirmModal();
+  resolver(Boolean(confirmed));
+}
+
+function askResetConfirmation({ title, message }) {
+  if (
+    !resetConfirmModal ||
+    !resetConfirmTitle ||
+    !resetConfirmMessage ||
+    !btnResetConfirm ||
+    !btnResetConfirmCancel
+  ) {
+    const promptMessage = [title || 'Reset Project', '', message || 'This cannot be undone.'].join('\n');
+    return Promise.resolve(window.confirm(promptMessage));
+  }
+  return new Promise((resolve) => {
+    resetConfirmResolver = resolve;
+    openResetConfirmModal(title, message);
+  });
+}
+
+function openGroupNameModal({ title = 'Add Group', label = 'Group name', confirmLabel = 'Add', value = '' } = {}) {
+  if (!groupNameModal) return;
+  if (groupNameTitle) {
+    groupNameTitle.textContent = title;
+  }
+  if (groupNameLabel) {
+    groupNameLabel.textContent = label;
+  }
+  if (btnGroupNameConfirm) {
+    btnGroupNameConfirm.textContent = confirmLabel;
+  }
+  if (groupNameInput) {
+    groupNameInput.value = value;
+  }
+  groupNameModal.classList.add('visible');
+  groupNameModal.setAttribute('aria-hidden', 'false');
+  groupNameInput?.focus();
+  groupNameInput?.select();
+}
+
+function closeGroupNameModal() {
+  if (!groupNameModal) return;
+  groupNameModal.classList.remove('visible');
+  groupNameModal.setAttribute('aria-hidden', 'true');
+}
+
+function resolveGroupNameModal(confirmed) {
+  if (!groupNameResolver) return;
+  const resolver = groupNameResolver;
+  groupNameResolver = null;
+  const value = String(groupNameInput?.value || '');
+  closeGroupNameModal();
+  resolver({
+    confirmed: Boolean(confirmed),
+    value,
+  });
+}
+
+function askTextInput({ title = 'Input', label = 'Value', confirmLabel = 'OK', value = '' } = {}) {
+  if (!groupNameModal || !groupNameTitle || !groupNameLabel || !groupNameInput || !btnGroupNameConfirm || !btnGroupNameCancel) {
+    const input = window.prompt(label, value);
+    return Promise.resolve({
+      confirmed: input !== null,
+      value: String(input || ''),
+    });
+  }
+  return new Promise((resolve) => {
+    groupNameResolver = resolve;
+    openGroupNameModal({ title, label, confirmLabel, value });
+  });
+}
+
+function askGroupName({ title = 'Add Group', label = 'Group name', confirmLabel = 'Add', value = '' } = {}) {
+  return askTextInput({ title, label, confirmLabel, value });
+}
+
+function openInfoMessageModal({ title = 'Info', message = '', closeLabel = 'Close' } = {}) {
+  if (!infoMessageModal) return;
+  infoMessageTitle && (infoMessageTitle.textContent = title);
+  infoMessageBody && (infoMessageBody.textContent = message);
+  btnInfoMessageClose && (btnInfoMessageClose.textContent = closeLabel);
+  infoMessageModal.classList.add('visible');
+  infoMessageModal.setAttribute('aria-hidden', 'false');
+  btnInfoMessageClose?.focus();
+}
+
+function closeInfoMessageModal() {
+  if (!infoMessageModal) return;
+  infoMessageModal.classList.remove('visible');
+  infoMessageModal.setAttribute('aria-hidden', 'true');
+}
+
+function resolveInfoMessageModal() {
+  const resolver = infoMessageResolver;
+  infoMessageResolver = null;
+  closeInfoMessageModal();
+  resolver?.();
+}
+
+function askInfoMessage({ title = 'Info', message = '', closeLabel = 'Close' } = {}) {
+  if (!infoMessageModal || !infoMessageTitle || !infoMessageBody || !btnInfoMessageClose) {
+    window.alert(message);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    infoMessageResolver = resolve;
+    openInfoMessageModal({ title, message, closeLabel });
+  });
+}
+
+function openTileOptionsModal({ title = 'Tile Options', faceSize = 1024, tileSize = 512 } = {}) {
+  if (!tileOptionsModal) return;
+  tileOptionsTitle && (tileOptionsTitle.textContent = title);
+  if (tileOptionsFaceInput) tileOptionsFaceInput.value = String(faceSize);
+  if (tileOptionsTileInput) tileOptionsTileInput.value = String(tileSize);
+  tileOptionsModal.classList.add('visible');
+  tileOptionsModal.setAttribute('aria-hidden', 'false');
+  tileOptionsFaceInput?.focus();
+  tileOptionsFaceInput?.select();
+}
+
+function closeTileOptionsModal() {
+  if (!tileOptionsModal) return;
+  tileOptionsModal.classList.remove('visible');
+  tileOptionsModal.setAttribute('aria-hidden', 'true');
+}
+
+function resolveTileOptionsModal(confirmed) {
+  if (!tileOptionsResolver) return;
+  const resolver = tileOptionsResolver;
+  tileOptionsResolver = null;
+  const faceSize = Number(tileOptionsFaceInput?.value) || 1024;
+  const tileSize = Number(tileOptionsTileInput?.value) || 512;
+  closeTileOptionsModal();
+  resolver({
+    confirmed: Boolean(confirmed),
+    faceSize,
+    tileSize,
+  });
+}
+
+function askTileOptionsModal({ title = 'Tile Options', faceSize = 1024, tileSize = 512 } = {}) {
+  if (!tileOptionsModal || !tileOptionsFaceInput || !tileOptionsTileInput || !btnTileOptionsConfirm || !btnTileOptionsCancel) {
+    const faceInput = prompt('Face size (e.g., 1024, 2048, 4096)', String(faceSize));
+    if (faceInput === null) return Promise.resolve(null);
+    const tileInput = prompt('Tile size (e.g., 256, 512)', String(tileSize));
+    if (tileInput === null) return Promise.resolve(null);
+    return Promise.resolve({
+      faceSize: Number(faceInput) || 1024,
+      tileSize: Number(tileInput) || 512,
+    });
+  }
+  return new Promise((resolve) => {
+    tileOptionsResolver = (result) => {
+      if (!result?.confirmed) {
+        resolve(null);
+        return;
+      }
+      resolve({
+        faceSize: result.faceSize,
+        tileSize: result.tileSize,
+      });
+    };
+    openTileOptionsModal({ title, faceSize, tileSize });
+  });
+}
+
 function openGenerateAllTilesModal(message) {
   if (!generateAllTilesModal) return;
   if (generateAllTilesMessage) {
@@ -5382,7 +5718,7 @@ function updateHomePageButtons() {
   }
   if (btnViewHomePage) {
     const homePage = getProjectHomePage();
-    const hasContent = Boolean(String(homePage?.richContentHtml || '').trim());
+    const hasContent = hasMeaningfulRichContent(homePage);
     btnViewHomePage.disabled = !hasContent;
   }
 }
@@ -5571,9 +5907,11 @@ function renderContentBlocks() {
   const hotspot = editingHomePage ? homePage : getSelectedInfoHotspot();
   const scene = editingHomePage ? null : getSelectedScene();
   const infoContentEnabled = editingHomePage || isInfoHotspotInteractionModeActive();
+  const showInfoContentSection = infoContentEnabled;
   const editorContext = editingHomePage
     ? { type: 'home-page' }
     : (scene && hotspot ? { type: 'info-hotspot', sceneId: scene.id, hotspotId: hotspot.id } : null);
+  setInfoContentSectionVisible(showInfoContentSection);
   if (infoContentSectionBody) {
     infoContentSectionBody.hidden = !infoContentEnabled;
     infoContentSectionBody.setAttribute('aria-hidden', infoContentEnabled ? 'false' : 'true');
@@ -5809,7 +6147,7 @@ function renderContentBlocks() {
   colsSpaceInput.className = 'rich-font-size-input';
   colsSpaceInput.type = 'number';
   colsSpaceInput.min = '0';
-  colsSpaceInput.max = '48';
+  colsSpaceInput.max = '300';
   colsSpaceInput.step = '1';
   colsSpaceInput.value = '2';
   toolbar.appendChild(colsSpaceInput);
@@ -6095,17 +6433,25 @@ function renderContentBlocks() {
     if (execVisualEditorCommand('justifyFull')) return;
     applyAlignmentInRichSourceModal('justify', hotspot);
   });
-  btnInsertLink.addEventListener('click', () => {
-    if (runVisualEditorAction(() => {
-      const url = prompt('Link URL');
-      if (!url) return;
+  btnInsertLink.addEventListener('click', async () => {
+    if (isVisualEditorActiveForHotspot()) {
+      const result = await askTextInput({
+        title: 'Insert Link',
+        label: 'Link URL',
+        confirmLabel: 'Insert',
+        value: '',
+      });
+      const url = String(result?.value || '').trim();
+      if (!result?.confirmed || !url) return;
       richEditorSurface?.focus();
       restoreRichEditorSelectionRange();
-      document.execCommand('createLink', false, String(url).trim());
+      document.execCommand('createLink', false, url);
       saveRichEditorSelectionRange();
       syncRichEditorSelectionState();
-    })) return;
-    insertLinkInRichSourceModal(hotspot);
+      saveRichEditorModalContent({ closeAfterSave: false });
+      return;
+    }
+    await insertLinkInRichSourceModal(hotspot);
   });
 
   btnInsertParagraph.addEventListener('click', () => {
@@ -6135,13 +6481,19 @@ function renderContentBlocks() {
     renderContentBlocks();
   });
 
-  btnInsertImageUrl.addEventListener('click', () => {
-    const url = prompt('Image URL');
-    if (!url) return;
+  btnInsertImageUrl.addEventListener('click', async () => {
+    const result = await askTextInput({
+      title: 'Insert Image URL',
+      label: 'Image URL',
+      confirmLabel: 'Insert',
+      value: '',
+    });
+    const url = String(result?.value || '').trim();
+    if (!result?.confirmed || !url) return;
     const escaped = escapeHtml(url);
     if (runVisualEditorAction(() => {
       const img = document.createElement('img');
-      img.setAttribute('src', String(url).trim());
+      img.setAttribute('src', url);
       img.setAttribute('alt', '');
       img.setAttribute('data-wrap', 'none');
       img.setAttribute('style', buildDefaultRichImageStyle({ wrap: 'none' }));
@@ -6190,10 +6542,15 @@ function renderContentBlocks() {
     }
   });
 
-  btnInsertVideoUrl.addEventListener('click', () => {
-    const url = prompt('Video URL or embed URL');
-    if (!url) return;
-    const normalizedUrl = String(url).trim();
+  btnInsertVideoUrl.addEventListener('click', async () => {
+    const result = await askTextInput({
+      title: 'Insert Video URL',
+      label: 'Video URL or embed URL',
+      confirmLabel: 'Insert',
+      value: '',
+    });
+    const normalizedUrl = String(result?.value || '').trim();
+    if (!result?.confirmed || !normalizedUrl) return;
     const embedUrl = normalizeVideoEmbedUrl(normalizedUrl);
     const isEmbed = /youtube\.com|youtu\.be|vimeo\.com|player\.vimeo\.com/i.test(embedUrl);
     if (runVisualEditorAction(() => {
@@ -6264,10 +6621,15 @@ function renderContentBlocks() {
     }
   });
 
-  btnInsertCols.addEventListener('click', () => {
-    const input = prompt('How many columns? (1-6)', '3');
-    if (input === null) return;
-    const safeCols = normalizeRichLayoutColumns(input, 3);
+  btnInsertCols.addEventListener('click', async () => {
+    const result = await askTextInput({
+      title: 'Insert Block',
+      label: 'How many columns? (1-6)',
+      confirmLabel: 'Insert',
+      value: '3',
+    });
+    if (!result?.confirmed) return;
+    const safeCols = normalizeRichLayoutColumns(result.value, 3);
     if (runVisualEditorAction(() => insertRichColumnsLayout(safeCols))) return;
     insertIntoRichSourceModal(`\n${buildRichColumnsHtml(safeCols)}\n`, hotspot);
   });
@@ -6298,8 +6660,11 @@ function renderContentBlocks() {
         updateStatus('Select a columns block first.');
         return;
       }
-      applySpacingToRichLayout(layout, colsSpaceInput.value);
-    })) return;
+      const safeSpacing = sanitizeRichParagraphSpacingValue(colsSpaceInput.value);
+      if (!safeSpacing) return;
+      colsSpaceInput.value = String(Number.parseInt(safeSpacing, 10));
+      applySpacingToRichLayout(layout, safeSpacing);
+    }, { save: false })) return;
     updateStatus('Open Visual Editor and select a columns block first.');
   });
   colsSpaceInput.addEventListener('change', () => {
@@ -6309,7 +6674,10 @@ function renderContentBlocks() {
         updateStatus('Select a columns block first.');
         return;
       }
-      applySpacingToRichLayout(layout, colsSpaceInput.value);
+      const safeSpacing = sanitizeRichParagraphSpacingValue(colsSpaceInput.value);
+      if (!safeSpacing) return;
+      colsSpaceInput.value = String(Number.parseInt(safeSpacing, 10));
+      applySpacingToRichLayout(layout, safeSpacing);
     })) return;
     updateStatus('Open Visual Editor and select a columns block first.');
   });
@@ -6558,7 +6926,7 @@ function clearSceneTargetReferences(deletedSceneIds) {
   runtimeSceneActions?.clearSceneTargetReferences(deletedSceneIds);
 }
 
-function deleteAllScenes() {
+async function deleteAllScenes() {
   const group = getSelectedGroup();
   if (!group) {
     updateStatus('Select a group first.');
@@ -6571,10 +6939,22 @@ function deleteAllScenes() {
     updateStatus(`No images to delete in "${group.name}".`);
     return;
   }
-  const confirmed = window.confirm(`Delete all ${total} image(s) in group "${group.name}"? This cannot be undone.`);
-  if (!confirmed) {
-    return;
-  }
+  const confirmed = await askDeleteConfirmation({
+    title: 'Delete All Scenes',
+    message: [
+      `Delete all ${total} image(s) in group "${group.name}"?`,
+      '',
+      'This will remove:',
+      '- all selected group scenes',
+      '- their hotspots and scene links',
+      '- their floorplan placements',
+      '- their generated tiles and scene metadata',
+      '- incoming scene links from other scenes that target them',
+      '',
+      'This cannot be undone.'
+    ].join('\n')
+  });
+  if (!confirmed) return;
 
   const deletedSceneIds = new Set(scenesInGroup.map((scene) => scene.id));
   if (pendingSceneLinkDraft && deletedSceneIds.has(pendingSceneLinkDraft.sceneId)) {
@@ -6858,7 +7238,7 @@ function deleteSceneLinkBlock() {
 async function removeAllSceneLinksForCurrentScene() {
   const scope = await askDeleteLinksScope();
   if (scope === null) {
-    updateStatus('Delete All cancelled.');
+    updateStatus('Delete links cancelled.');
     return;
   }
   if (scope !== 'scene' && scope !== 'group') {
@@ -6911,11 +7291,14 @@ async function removeAllSceneLinksForCurrentScene() {
     updateStatus('No links to remove in current group.');
     return;
   }
-  const confirmDeleteGroupLinks = window.confirm(
-    `Delete all ${existingLinksInGroup} link(s) in current group? This cannot be undone.`
-  );
+  const confirmDeleteGroupLinks = await askDeleteConfirmation({
+    title: 'Delete Group Links',
+    message: `Delete all ${existingLinksInGroup} link(s) in current group?\n\nThis cannot be undone.`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel'
+  });
   if (!confirmDeleteGroupLinks) {
-    updateStatus('Delete All cancelled.');
+    updateStatus('Delete group links cancelled.');
     return;
   }
   if (pendingSceneLinkDraft) {
@@ -7055,7 +7438,7 @@ function createResetProjectPayload() {
   };
 }
 
-function resetProjectWithConfirmation() {
+async function resetProjectWithConfirmation() {
   if (!state.project) return;
   const warningMessage = [
     'Project reset will permanently remove:',
@@ -7064,16 +7447,13 @@ function resetProjectWithConfirmation() {
     '- all hotspots and links',
     '- all map/floorplan data',
     '- all uploaded media',
-    '',
-    'Type "reset" to continue:'
   ].join('\n');
-  const input = window.prompt(warningMessage);
-  if (input === null) {
+  const confirmed = await askResetConfirmation({
+    title: 'Reset Project',
+    message: warningMessage
+  });
+  if (!confirmed) {
     updateStatus('Project reset cancelled.');
-    return;
-  }
-  if (String(input).trim().toLowerCase() !== 'reset') {
-    updateStatus('Project reset aborted (confirmation word mismatch).');
     return;
   }
 
@@ -7221,15 +7601,20 @@ function uploadFloorplanFile(file) {
   reader.readAsDataURL(file);
 }
 
-function deleteFloorplan() {
+async function deleteFloorplan() {
   const group = getSelectedGroup();
   if (!group) return;
   const floorplans = state.project.minimap.floorplans || [];
   const index = floorplans.findIndex((fp) => fp.groupId === group.id);
   if (index === -1) return;
-  const confirmed = window.confirm(`Delete map for group "${group.name}"?`);
+  const confirmed = await askDeleteConfirmation({
+    title: 'Delete Map',
+    message: `Delete map for group "${group.name}"?`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel'
+  });
   if (!confirmed) {
-    updateStatus('Map delete cancelled.');
+    updateStatus('Delete map cancelled.');
     return;
   }
   floorplans.splice(index, 1);
@@ -7708,15 +8093,12 @@ async function uploadPanoramaFiles(files) {
   autosave();
 }
 
-function askTileOptions() {
-  const faceInput = prompt('Face size (e.g., 1024, 2048, 4096)', '1024');
-  if (faceInput === null) return null;
-  const tileInput = prompt('Tile size (e.g., 256, 512)', '512');
-  if (tileInput === null) return null;
-  return {
-    faceSize: Number(faceInput) || 1024,
-    tileSize: Number(tileInput) || 512
-  };
+async function askTileOptions() {
+  return askTileOptionsModal({
+    title: 'Tile Options',
+    faceSize: 1024,
+    tileSize: 512,
+  });
 }
 
 function highestPowerOfTwoAtOrBelow(value) {
@@ -7769,8 +8151,41 @@ async function showTileSizingInfo() {
     'Note: larger tiles create fewer files but reduce zoom detail granularity.'
   ];
 
-  alert(lines.join('\n'));
+  await askInfoMessage({
+    title: 'Tile Info',
+    message: lines.join('\n'),
+    closeLabel: 'Close',
+  });
   updateStatus(`Tile info ready for "${scene.name || scene.id}".`);
+}
+
+async function checkScenesWithoutTiles() {
+  const scenes = Array.isArray(state.project?.scenes) ? state.project.scenes : [];
+  if (!scenes.length) {
+    updateStatus('No scenes available.');
+    return;
+  }
+  const missingTiles = scenes.filter((scene) => !sceneHasGeneratedTiles(scene));
+  if (!missingTiles.length) {
+    await askInfoMessage({
+      title: 'Tiles Check',
+      message: 'All scenes have tiles.',
+      closeLabel: 'Close',
+    });
+    updateStatus('All scenes have tiles.');
+    return;
+  }
+  const lines = [
+    `${missingTiles.length} scene(s) without tiles:`,
+    '',
+    ...missingTiles.map((scene) => `- ${scene.name || scene.id}`),
+  ];
+  await askInfoMessage({
+    title: 'Tiles Check',
+    message: lines.join('\n'),
+    closeLabel: 'Close',
+  });
+  updateStatus(`${missingTiles.length} scene(s) without tiles found.`);
 }
 
 async function generateTilesForScene(options = {}) {
@@ -7781,7 +8196,7 @@ async function generateTilesForScene(options = {}) {
   }
 
   try {
-    const tileOptions = options.tileOptions || askTileOptions();
+    const tileOptions = options.tileOptions || await askTileOptions();
     if (!tileOptions) {
       updateStatus('Tiling cancelled.');
       return;
@@ -7790,7 +8205,11 @@ async function generateTilesForScene(options = {}) {
     const tileSize = tileOptions.tileSize;
     const sceneLabel = options.sceneLabel ? ` (${options.sceneLabel})` : '';
     updateStatus(`Generating tiles for "${scene.name || scene.id}"${sceneLabel}...`);
-    showProgress(0);
+    if (tilingBatchContext && tilingBatchContext.total > 0) {
+      showProgress((tilingBatchContext.completed / tilingBatchContext.total) * 100);
+    } else {
+      showProgress(0);
+    }
     tilingPaused = false;
     const tiles = await buildCubemapTiles(scene.id, scene.sourceImage.dataUrl, faceSize, tileSize);
     generatedTiles.set(scene.id, tiles);
@@ -7813,7 +8232,9 @@ async function generateTilesForScene(options = {}) {
     }
 
     updateStatus(`Tiles generated for "${scene.name || scene.id}". Export static to save files.`);
-    showProgress(100, true);
+    if (!tilingBatchContext || tilingBatchContext.total <= 1) {
+      showProgress(100, true);
+    }
     autosave();
     return true;
   } catch (error) {
@@ -7872,7 +8293,7 @@ async function generateTilesForSelectedScenes() {
     return;
   }
 
-  const tileOptions = askTileOptions();
+  const tileOptions = await askTileOptions();
   if (!tileOptions) {
     updateStatus('Tiling cancelled.');
     return;
@@ -7880,10 +8301,15 @@ async function generateTilesForSelectedScenes() {
 
   const originalSceneId = state.selectedSceneId;
   let completed = 0;
+  tilingBatchContext = {
+    total: scenesWithPanorama.length,
+    completed: 0,
+  };
 
   try {
     for (let i = 0; i < scenesWithPanorama.length; i += 1) {
       const scene = scenesWithPanorama[i];
+      tilingBatchContext.completed = completed;
       await generateTilesForScene({
         scene,
         tileOptions,
@@ -7891,12 +8317,15 @@ async function generateTilesForSelectedScenes() {
         sceneLabel: `${i + 1}/${scenesWithPanorama.length}`
       });
       completed += 1;
+      tilingBatchContext.completed = completed;
+      showProgress((completed / scenesWithPanorama.length) * 100);
     }
     const skippedParts = [];
     if (alreadyTiled.length) skippedParts.push(`already tiled: ${alreadyTiled.length}`);
     if (skippedNoPanorama) skippedParts.push(`without image: ${skippedNoPanorama}`);
     const skippedPart = skippedParts.length ? ` Skipped ${skippedParts.join(', ')}.` : '';
     updateStatus(`Tiles generated for ${completed}/${scenesWithPanorama.length} selected scenes.${skippedPart}`);
+    showProgress(100, true);
   } catch (error) {
     if (error?.message === 'cancelled') {
       updateStatus(`Tiling cancelled (${completed}/${scenesWithPanorama.length} selected scenes completed).`);
@@ -7904,6 +8333,7 @@ async function generateTilesForSelectedScenes() {
       updateStatus(`Selected tiling failed (${completed}/${scenesWithPanorama.length} completed).`);
     }
   } finally {
+    tilingBatchContext = null;
     const stillExists = state.project.scenes.some((scene) => scene.id === originalSceneId);
     state.selectedSceneId = stillExists ? originalSceneId : state.project.scenes[0]?.id || null;
     renderSceneList();
@@ -7946,7 +8376,7 @@ async function generateAllTiles() {
     return;
   }
 
-  const tileOptions = askTileOptions();
+  const tileOptions = await askTileOptions();
   if (!tileOptions) {
     updateStatus('Tiling cancelled.');
     return;
@@ -7958,10 +8388,15 @@ async function generateAllTiles() {
 
   const originalSceneId = state.selectedSceneId;
   let completed = 0;
+  tilingBatchContext = {
+    total: scenesWithPanorama.length,
+    completed: 0,
+  };
 
   try {
     for (let i = 0; i < scenesWithPanorama.length; i += 1) {
       const scene = scenesWithPanorama[i];
+      tilingBatchContext.completed = completed;
       await generateTilesForScene({
         scene,
         tileOptions,
@@ -7969,12 +8404,15 @@ async function generateAllTiles() {
         sceneLabel: `${i + 1}/${scenesWithPanorama.length}`
       });
       completed += 1;
+      tilingBatchContext.completed = completed;
+      showProgress((completed / scenesWithPanorama.length) * 100);
     }
     const skippedParts = [];
     if (tilePolicy === 'skip' && skippedAlreadyTiled) skippedParts.push(`already tiled: ${skippedAlreadyTiled}`);
     if (skippedNoPanorama) skippedParts.push(`without image: ${skippedNoPanorama}`);
     const skippedPart = skippedParts.length ? ` Skipped ${skippedParts.join(', ')}.` : '';
     updateStatus(`Tiles generated for ${completed}/${scenesWithPanorama.length} scenes.${skippedPart}`);
+    showProgress(100, true);
   } catch (error) {
     if (error?.message === 'cancelled') {
       updateStatus(`Generate all tiles cancelled (${completed}/${scenesWithPanorama.length} completed).`);
@@ -7982,6 +8420,7 @@ async function generateAllTiles() {
       updateStatus(`Generate all tiles failed (${completed}/${scenesWithPanorama.length} completed).`);
     }
   } finally {
+    tilingBatchContext = null;
     const stillExists = state.project.scenes.some((scene) => scene.id === originalSceneId);
     state.selectedSceneId = stillExists ? originalSceneId : state.project.scenes[0]?.id || null;
     renderSceneList();
@@ -8106,8 +8545,16 @@ function updateProgress(value) {
   const now = Date.now();
   if (now - lastProgressUpdate < 120) return;
   lastProgressUpdate = now;
-  updateStatus(`Generating tiles: ${Math.round(value)}%`);
-  showProgress(value);
+  const sceneProgress = Math.max(0, Math.min(100, Number(value) || 0));
+  if (tilingBatchContext && tilingBatchContext.total > 0) {
+    const completed = Math.max(0, Math.min(tilingBatchContext.total, tilingBatchContext.completed || 0));
+    const overallProgress = ((completed + (sceneProgress / 100)) / tilingBatchContext.total) * 100;
+    updateStatus(`Generating tiles: ${Math.round(overallProgress)}% (${completed + 1}/${tilingBatchContext.total})`);
+    showProgress(overallProgress);
+    return;
+  }
+  updateStatus(`Generating tiles: ${Math.round(sceneProgress)}%`);
+  showProgress(sceneProgress);
 }
 
 function pauseTiling() {
@@ -8419,6 +8866,10 @@ window.IterpanoEditorBootstrap?.initializeEditorUiState({
   groupsPanelBody,
   btnToggleScenesPanel,
   scenesPanelBody,
+  btnToggleHomePagePanel,
+  homePagePanelBody,
+  btnToggleInfoHotspotsPanel,
+  infoHotspotsPanelBody,
   btnToggleMapPanel,
   mapPanelBody,
   btnToggleSceneActionsPanel,

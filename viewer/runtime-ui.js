@@ -123,7 +123,7 @@
       btnFullscreen.disabled = !enabledBySettings || !supported;
       if (!enabledBySettings) return;
       const isFullscreen = isFullscreenUiActive();
-      btnFullscreen.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+      btnFullscreen.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen 360';
       btnFullscreen.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
       updateFullscreenUiState();
     }

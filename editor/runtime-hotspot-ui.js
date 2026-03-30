@@ -7,6 +7,7 @@
       previewModal,
       previewModalContent,
       previewModalBody,
+      previewCloseButton,
       getGroupById,
       getInfoHotspotFrameSize,
       getViewportClampedInfoFrameSize,
@@ -185,6 +186,8 @@
       previewModalContent.style.removeProperty('top');
       previewModalBody.style.removeProperty('height');
       previewModalBody.style.removeProperty('max-height');
+      previewCloseButton?.style.removeProperty('color');
+      previewCloseButton?.style.removeProperty('border-color');
     }
 
     function applyPreviewModalVisualStyle(hotspot) {
@@ -192,11 +195,21 @@
       const visualStyle = getInfoHotspotEditorVisualStyle(hotspot);
       if (!visualStyle) {
         previewModalBody.style.removeProperty('background-color');
+        previewModalBody.style.removeProperty('border-color');
+        previewCloseButton?.style.removeProperty('color');
+        previewCloseButton?.style.removeProperty('border-color');
         return;
       }
-      const hex = floorplanColorMap[visualStyle.backgroundColorKey] || floorplanColorMap.yellow;
+      const backgroundHex = floorplanColorMap[visualStyle.backgroundColorKey] || floorplanColorMap.yellow;
+      const borderColorKey = normalizeFloorplanColorKey(hotspot?.markerColorKey || visualStyle.backgroundColorKey || defaultInfoBgColorKey);
+      const borderHex = floorplanColorMap[borderColorKey] || floorplanColorMap.yellow;
       const alpha = (100 - visualStyle.backgroundTransparency) / 100;
-      previewModalBody.style.backgroundColor = withAlpha(hex, alpha);
+      previewModalBody.style.backgroundColor = withAlpha(backgroundHex, alpha);
+      previewModalBody.style.borderColor = borderHex;
+      if (previewCloseButton) {
+        previewCloseButton.style.color = borderHex;
+        previewCloseButton.style.borderColor = 'transparent';
+      }
     }
 
     function getLinkTargetSceneOptions(currentSceneId) {

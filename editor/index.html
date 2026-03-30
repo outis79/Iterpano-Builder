@@ -69,6 +69,7 @@
             <button class="btn ghost" id="btn-scene-sort-name">A/Z</button>
             <button class="btn ghost" id="btn-scene-sort-upload">DATE</button>
             <button class="btn ghost" id="btn-scene-label-mode">Alias OFF</button>
+            <button class="btn ghost" id="btn-set-main-scene">Set Main</button>
           </div>
           <div class="list" id="scene-list"></div>
           <div class="progress-wrap" id="tiling-progress">
@@ -111,13 +112,10 @@
             <button class="btn ghost" id="btn-delete-all-scenes">Delete All</button>
           </div>
           <div class="inline-actions">
-            <button class="btn ghost" id="btn-set-main-scene">Set Main</button>
-            <button class="btn ghost" id="btn-set-orientation">Set Orientation</button>
-          </div>
-          <div class="inline-actions">
             <button class="btn ghost" id="btn-tiles-info">Info</button>
             <button class="btn ghost" id="btn-generate-tiles">Generate Tiles</button>
             <button class="btn ghost" id="btn-generate-all-tiles">Generate All Tiles</button>
+            <button class="btn ghost" id="btn-check-missing-tiles">Check</button>
           </div>
           <div class="inline-actions">
             <button class="btn ghost" id="btn-pause-tiles">Pause</button>
@@ -161,8 +159,9 @@
       <section class="panel-section">
         <div class="section-head">
           <div class="section-title">Home Page</div>
+          <button class="btn ghost section-toggle-btn" id="btn-toggle-home-page-panel">Hide</button>
         </div>
-        <div class="section-body">
+        <div class="section-body" id="home-page-panel-body">
           <div class="inline-actions">
             <button class="btn ghost" id="btn-edit-home-page">Edit</button>
             <button class="btn ghost" id="btn-save-home-page">Save</button>
@@ -208,8 +207,9 @@
       <section class="panel-section">
         <div class="section-head">
           <div class="section-title">Info Hotspots</div>
+          <button class="btn ghost section-toggle-btn" id="btn-toggle-info-hotspots-panel">Hide</button>
         </div>
-        <div class="section-body">
+        <div class="section-body" id="info-hotspots-panel-body">
           <div class="inline-actions">
             <button class="btn" id="btn-add-hotspot">New</button>
             <button class="btn ghost" id="btn-delete-hotspot">Delete</button>
@@ -236,7 +236,7 @@
         </div>
       </section>
 
-      <section class="panel-section">
+      <section class="panel-section" id="rich-content-section" hidden>
         <div class="section-head">
           <div class="section-title" id="rich-content-title">Info Content</div>
         </div>
@@ -304,6 +304,90 @@
           <button class="btn ghost" id="btn-delete-links-scene">Current Scene</button>
           <button class="btn ghost" id="btn-delete-links-group">Current Group</button>
           <button class="btn" id="btn-delete-links-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="delete-confirm-modal" aria-hidden="true">
+    <div class="modal-content modal-content-compact">
+      <div class="modal-header">
+        <div class="modal-title" id="delete-confirm-title">Confirm Delete</div>
+      </div>
+      <div class="modal-body">
+        <div class="panel-hint duplicate-modal-message" id="delete-confirm-message"></div>
+        <div class="confirm-modal-actions">
+          <button class="btn primary" id="btn-delete-confirm">Delete</button>
+          <button class="btn" id="btn-delete-confirm-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="reset-confirm-modal" aria-hidden="true">
+    <div class="modal-content modal-content-compact">
+      <div class="modal-header">
+        <div class="modal-title" id="reset-confirm-title">Reset Project</div>
+      </div>
+      <div class="modal-body">
+        <div class="panel-hint duplicate-modal-message" id="reset-confirm-message"></div>
+        <div class="confirm-modal-actions">
+          <button class="btn primary" id="btn-reset-confirm">Reset</button>
+          <button class="btn" id="btn-reset-confirm-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="group-name-modal" aria-hidden="true">
+    <div class="modal-content modal-content-compact">
+      <div class="modal-header">
+        <div class="modal-title" id="group-name-title">Add Group</div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="group-name-input" id="group-name-label">Group name</label>
+          <input id="group-name-input" type="text" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="confirm-modal-actions">
+          <button class="btn primary" id="btn-group-name-confirm">Add</button>
+          <button class="btn" id="btn-group-name-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="info-message-modal" aria-hidden="true">
+    <div class="modal-content modal-content-compact">
+      <div class="modal-header">
+        <div class="modal-title" id="info-message-title">Info</div>
+      </div>
+      <div class="modal-body">
+        <div class="panel-hint duplicate-modal-message" id="info-message-body"></div>
+        <div class="confirm-modal-actions">
+          <button class="btn primary" id="btn-info-message-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hotspot-modal" id="tile-options-modal" aria-hidden="true">
+    <div class="modal-content modal-content-compact">
+      <div class="modal-header">
+        <div class="modal-title" id="tile-options-title">Tile Options</div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="tile-options-face-input" id="tile-options-face-label">Face size</label>
+          <input id="tile-options-face-input" type="number" min="256" step="1" value="1024">
+        </div>
+        <div class="field">
+          <label for="tile-options-tile-input" id="tile-options-tile-label">Tile size</label>
+          <input id="tile-options-tile-input" type="number" min="256" step="1" value="512">
+        </div>
+        <div class="confirm-modal-actions">
+          <button class="btn primary" id="btn-tile-options-confirm">Apply</button>
+          <button class="btn" id="btn-tile-options-cancel">Cancel</button>
         </div>
       </div>
     </div>

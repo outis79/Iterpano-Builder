@@ -10,12 +10,13 @@ There are no build tools, backend services, or package manager requirements. Eve
 
 ## Current Status
 The project is operational and currently includes:
+- current pre-release snapshot tag target: `v1.0.0-beta.1`
 - scene group management
 - unique group-name validation on create/rename
 - project-level main group selection (`Set Main` in `Groups`)
 - per-group main scene selection
 - panorama upload and scene creation
-- project-level hard reset (`Reset Project` with typed confirmation: `reset`)
+- project-level hard reset (`Reset Project` with custom confirmation modal)
 - cubemap tile generation (worker + main-thread fallback)
 - selected-scene tiling (single or multi-select from scene list, already-tiled scenes are skipped)
 - selected-scene deletion (`Delete Scene(s)`) including linked tile/map/link cleanup
@@ -36,14 +37,15 @@ The project is operational and currently includes:
 - project package ZIP export/import (complete editor backup with `project.json` + generated `tiles/`)
 - static package export (ZIP or folder write)
 - static export preflight warning for scenes without tiles or with fewer than 2 scene links
+- scene tile coverage check (`Check`) with missing-scene list modal
 - collapsible `Scene Actions` panel in right column (before `Map`)
 - scene list sorting controls (`A/Z`, `DATE`) with asc/desc toggle
 - scene alias mode in list (`Alias ON/OFF`) with inline double-click editing
-- per-scene comment field in `Scene Actions`
 - keyboard scene navigation in list (`ArrowUp` / `ArrowDown`)
 - scene-link label uses target scene alias (fallback: scene name)
 - cross-group duplicate upload modal (`Proceed`, `Accept All`, `Skip`, `Skip All`, `List`, `Cancel`)
 - viewer with groups, floorplan, hotspot modal, gyro toggle, and basic VR/Cardboard mode
+- exported viewer fullscreen now isolates only the 360 scene and exposes an in-scene exit button
 - exported viewer opens without static placeholder text inside the panorama area
 - exported viewer includes a mobile-first layout: panorama prioritized, `Group`, `Scenes`, and `Map` open as fullscreen overlays
 - exported viewer map supports desktop drag-pan + mouse-wheel zoom and mobile one-finger pan + two-finger pinch
@@ -112,6 +114,7 @@ Current result:
 - hotspot visual styling and preview/scene-link UI helpers now delegate to a dedicated editor module
 - shared utility logic now delegates tile-state checks, export warnings, and color/math helpers to a dedicated editor module
 - runtime editor modules are created through guarded initialization helpers to reduce bootstrap-failure impact during refactors
+- most editor confirmations/inputs now use custom modals instead of browser-native `prompt` / `confirm`
 
 ## Editor/Viewer Synchronization
 Verified synchronization points between `editor` and `viewer`:
@@ -203,7 +206,7 @@ Then open:
 ## Quick Workflow (Editor -> Viewer)
 1. Open `editor/index.html`.
 2. Create a group (optional, but useful for organization).
-3. Upload one or more panorama images (`Upload Img` in `Groups` panel).
+3. Upload one or more panorama images (`Add` in `Scene Actions`).
 4. Generate tiles (`Generate Tiles`) for current scene selection (single or multi-select).
 5. Add hotspots and content.
 6. Upload floorplan.
@@ -211,13 +214,13 @@ Then open:
    - `Place`: add the current scene on map (no duplicates for same scene)
    - `Edit`: drag/delete points, change selected point color
    - `Select All` (in edit mode): bulk select all points for delete/color apply
-8. (Optional) Set the group entry scene with `Set Main Scene`.
+8. (Optional) Set the group entry scene with `Set Main`.
 9. (Optional) Set the default opening group with `Set Main` in `Groups`.
 10. (Optional) Edit `Home Page` for a welcome screen shown before the tour starts.
     - editor mode uses the same rich-content tools as `Info Content`
     - Home Page editor fills the browser area except the right tools panel
     - viewer renders Home Page fullscreen with integrated `Start Tour`
-11. (Optional) Use `Reset Project` from `Project` panel to clear all scenes/tiles/hotspots/maps/assets (requires typing `reset`).
+11. (Optional) Use `Reset Project` from `Project` panel to clear all scenes/tiles/hotspots/maps/assets.
 12. Export:
    - `Export Project JSON` for backup/project exchange
    - `Export Project Package ZIP` for complete reimportable editor backup
@@ -358,7 +361,7 @@ Local draft data takes precedence over `shared/sample-tour.json` when the editor
 
 ## Known Limitations
 - `shared/themes.json` and `shared/tour.schema.json` exist but are not automatically enforced/applied at runtime.
-- Tile settings are collected via `prompt` (minimal UX, no advanced validation).
+- Tile settings are collected via custom modal dialogs (still minimal validation).
 - VR mode currently provides Cardboard/fullscreen behavior; full WebXR integration is still partial.
 - The viewer loads `../shared/sample-tour.json` by default. For a different tour, replace that file or update `viewer/app.js`.
 - Cross-group duplicate detection is hash/name based (not visual similarity), so renamed/re-encoded files may still require manual confirmation.
